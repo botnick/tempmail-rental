@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── LINE Seed Sans TH (Local Fonts) ──────────── */
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH_W_Th.woff2') format('woff2');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH_W_Rg.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH_W_Bd.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH_W_XBd.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH_W_He.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ─── Global Resets ────────────────────────────── */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: #0d0a07;
+    color: #fef3e2;
+    overflow-x: hidden;
+  }
+}
+
+/* ─── Utilities ────────────────────────────── */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-br from-[#f97316] to-[#f59e0b];
+  }
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent bg-gradient-to-br from-[#fb923c] to-[#f87171];
+  }
+  .text-gradient-vivid {
+    @apply bg-clip-text text-transparent bg-gradient-to-br from-[#f59e0b] via-[#f97316] to-[#ea580c];
+    background-size: 300% 300%;
+    animation: gradShift 6s ease-in-out infinite;
+  }
+
+  .delay-1 { animation-delay: 80ms; }
+  .delay-2 { animation-delay: 160ms; }
+  .delay-3 { animation-delay: 240ms; }
+  .delay-4 { animation-delay: 320ms; }
+  .delay-5 { animation-delay: 400ms; }
+}
+
+@keyframes gradShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ─── Warm Mesh Background ─────────────────────── */
+.mesh-bg {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+}
+.mesh-bg::before {
+  content: '';
+  position: absolute; width: 140%; height: 140%; top: -20%; left: -20%;
+  background:
+    radial-gradient(ellipse 700px 700px at 25% 15%, rgba(249,115,22,0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 500px at 75% 25%, rgba(245,158,11,0.08) 0%, transparent 65%),
+    radial-gradient(ellipse 450px 450px at 55% 80%, rgba(251,146,60,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 600px at 20% 70%, rgba(234,88,12,0.05) 0%, transparent 65%);
+  animation: meshMove 30s ease-in-out infinite alternate;
+}
+@keyframes meshMove {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  25%  { transform: translate(25px, -15px) rotate(0.5deg); }
+  50%  { transform: translate(-15px, 25px) rotate(-0.5deg); }
+  75%  { transform: translate(30px, 10px) rotate(1deg); }
+  100% { transform: translate(-10px, -20px) rotate(-0.3deg); }
+}
+
+/* ─── Noise Overlay ────────────────────────────── */
+.noise-overlay {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.02;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ─── Scrollbar ────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(249,115,22,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(249,115,22,0.25); }
