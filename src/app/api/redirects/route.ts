@@ -26,5 +26,14 @@ export async function GET(request: NextRequest) {
     },
   });
 
+  // Validate destination to prevent open redirect
+  if (redirect?.destinationPath) {
+    const dest = redirect.destinationPath;
+    // Only allow relative paths — block absolute URLs, protocol handlers, and //example.com
+    if (!dest.startsWith('/') || dest.startsWith('//')) {
+      return NextResponse.json({ redirect: null });
+    }
+  }
+
   return NextResponse.json({ redirect });
 }

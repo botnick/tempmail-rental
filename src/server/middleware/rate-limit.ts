@@ -20,13 +20,17 @@ export interface RateLimitConfig {
 }
 
 // Default policies — loaded from config/db in production
+const isDev = process.env.NODE_ENV !== 'production';
+const devMultiplier = isDev ? 10 : 1; // 10x limits in development
+
 export const RATE_LIMIT_POLICIES: Record<string, RateLimitConfig> = {
-  'auth.login': { key: 'auth.login', limit: 5, windowMs: 15 * 60 * 1000 },
-  'auth.register': { key: 'auth.register', limit: 3, windowMs: 60 * 60 * 1000 },
-  'auth.password-reset': { key: 'auth.password-reset', limit: 3, windowMs: 60 * 60 * 1000 },
-  'mailbox.create': { key: 'mailbox.create', limit: 10, windowMs: 60 * 60 * 1000 },
-  'api.general': { key: 'api.general', limit: 100, windowMs: 60 * 1000 },
-  'admin.action': { key: 'admin.action', limit: 50, windowMs: 60 * 1000 },
+  'auth.login': { key: 'auth.login', limit: 5 * devMultiplier, windowMs: 15 * 60 * 1000 },
+  'auth.register': { key: 'auth.register', limit: 3 * devMultiplier, windowMs: 60 * 60 * 1000 },
+  'auth.password-reset': { key: 'auth.password-reset', limit: 3 * devMultiplier, windowMs: 60 * 60 * 1000 },
+  'mailbox.create': { key: 'mailbox.create', limit: 10 * devMultiplier, windowMs: 60 * 60 * 1000 },
+  'api.general': { key: 'api.general', limit: 100 * devMultiplier, windowMs: 60 * 1000 },
+  'admin.action': { key: 'admin.action', limit: 50 * devMultiplier, windowMs: 60 * 1000 },
+  'contact.submit': { key: 'contact.submit', limit: 3 * devMultiplier, windowMs: 15 * 60 * 1000 },
 };
 
 /**

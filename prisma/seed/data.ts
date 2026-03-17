@@ -1,5 +1,5 @@
-// prisma/seed/data.ts — Seed data constants (v3)
-// Aligned with: 60+ permissions, 9 roles, MFA, step-up auth, approval workflow, quota service
+// prisma/seed/data.ts — Seed data constants (v4)
+// Aligned with: 28 permissions, 3 roles (SYSTEM_ADMIN, ADMIN, CUSTOMER)
 
 // ── Helpers ─────────────────────────────────────
 export const daysAgo = (d: number) => new Date(Date.now() - d * 86400000);
@@ -9,18 +9,12 @@ export const daysFromNow = (d: number) => new Date(Date.now() + d * 86400000);
 
 // ── Roles (matches policy/permissions.ts ROLES) ─
 export const ROLES = [
-  { name: 'SUPER_ADMIN', displayName: 'Super Administrator', description: 'Full system access — can approve high-risk actions', isSystem: true },
-  { name: 'ADMIN', displayName: 'Administrator', description: 'System management — users, domains, plans, CMS', isSystem: true },
-  { name: 'SUPPORT', displayName: 'Support Agent', description: 'Customer support — view users, read billing, audit logs', isSystem: true },
-  { name: 'FINANCE', displayName: 'Finance Manager', description: 'Billing operations — refunds, adjustments, invoices', isSystem: true },
-  { name: 'SECURITY_AUDITOR', displayName: 'Security Auditor', description: 'Security event monitoring and resolution', isSystem: true },
-  { name: 'USER_FREE', displayName: 'Free User', description: 'Free tier', isSystem: false },
-  { name: 'USER_PRO', displayName: 'Pro User', description: 'Paid subscriber', isSystem: false },
-  { name: 'USER_BUSINESS', displayName: 'Business User', description: 'Business/Enterprise subscriber', isSystem: false },
-  { name: 'SYSTEM_SERVICE', displayName: 'System Service', description: 'Internal service accounts (webhooks, cron)', isSystem: true },
+  { name: 'SYSTEM_ADMIN', displayName: 'System Administrator', description: 'Full system access — all permissions, all modules', isSystem: true },
+  { name: 'ADMIN', displayName: 'Administrator', description: 'System management — users, domains, plans, billing, security', isSystem: true },
+  { name: 'CUSTOMER', displayName: 'Customer', description: 'Standard user — permissions gated by subscription plan', isSystem: false },
 ];
 
-// ── Permissions (matches policy/permissions.ts) ──
+// ── Permissions (matches policy/permissions.ts — streamlined v2) ──
 export const PERMISSIONS = [
   // Account
   { key: 'account.read', displayName: 'View Own Account', module: 'account' },
@@ -43,108 +37,56 @@ export const PERMISSIONS = [
   { key: 'billing.subscribe', displayName: 'Manage Subscription', module: 'billing' },
   // Admin: Dashboard
   { key: 'admin.dashboard.view', displayName: 'View Admin Dashboard', module: 'admin' },
-  // Admin: Users
-  { key: 'admin.user.list', displayName: 'List Users', module: 'admin' },
-  { key: 'admin.user.view', displayName: 'View User Details', module: 'admin' },
-  { key: 'admin.user.edit', displayName: 'Edit User', module: 'admin' },
-  { key: 'admin.user.suspend', displayName: 'Suspend User', module: 'admin' },
-  { key: 'admin.user.delete', displayName: 'Delete User', module: 'admin' },
-  { key: 'admin.user.impersonate', displayName: 'Impersonate User', module: 'admin' },
-  { key: 'admin.user.grant_credits', displayName: 'Grant Credits', module: 'admin' },
-  { key: 'admin.user.assign_role', displayName: 'Assign Role', module: 'admin' },
-  // Admin: Mailbox
-  { key: 'admin.mailbox.list', displayName: 'List All Mailboxes', module: 'admin' },
-  { key: 'admin.mailbox.view', displayName: 'View Mailbox Details', module: 'admin' },
-  { key: 'admin.mailbox.quarantine', displayName: 'Quarantine Mailbox', module: 'admin' },
-  { key: 'admin.mailbox.restore', displayName: 'Restore Mailbox', module: 'admin' },
-  { key: 'admin.mailbox.force_expire', displayName: 'Force Expire Mailbox', module: 'admin' },
+  // Admin: Users (view = list+detail, manage = suspend+grant+assign+logout)
+  { key: 'admin.user.view', displayName: 'View Users', module: 'admin' },
+  { key: 'admin.user.manage', displayName: 'Manage Users', module: 'admin' },
+  // Admin: Mailbox (view = list+detail, manage = quarantine+restore+expire)
+  { key: 'admin.mailbox.view', displayName: 'View Mailboxes', module: 'admin' },
+  { key: 'admin.mailbox.manage', displayName: 'Manage Mailboxes', module: 'admin' },
   // Admin: Domain
-  { key: 'admin.domain.list', displayName: 'List All Domains', module: 'admin' },
-  { key: 'admin.domain.create', displayName: 'Create System Domain', module: 'admin' },
-  { key: 'admin.domain.edit', displayName: 'Edit Domain', module: 'admin' },
-  { key: 'admin.domain.suspend', displayName: 'Suspend Domain', module: 'admin' },
-  { key: 'admin.domain.verify', displayName: 'Force Verify Domain', module: 'admin' },
-  // Admin: Plans
-  { key: 'admin.plan.list', displayName: 'List Plans', module: 'admin' },
-  { key: 'admin.plan.create', displayName: 'Create Plan', module: 'admin' },
-  { key: 'admin.plan.edit', displayName: 'Edit Plan', module: 'admin' },
-  { key: 'admin.plan.deactivate', displayName: 'Deactivate Plan', module: 'admin' },
+  { key: 'admin.domain.view', displayName: 'View Domains', module: 'admin' },
+  { key: 'admin.domain.manage', displayName: 'Manage Domains', module: 'admin' },
+  // Admin: Plans (view = list+detail, manage = create+edit+deactivate+delete)
+  { key: 'admin.plan.view', displayName: 'View Plans', module: 'admin' },
+  { key: 'admin.plan.manage', displayName: 'Manage Plans', module: 'admin' },
   // Admin: Billing
-  { key: 'admin.billing.view', displayName: 'View All Billing', module: 'admin' },
-  { key: 'admin.billing.refund', displayName: 'Process Refund', module: 'admin' },
-  { key: 'admin.billing.adjust', displayName: 'Adjust Balance', module: 'admin' },
+  { key: 'admin.billing.view', displayName: 'View Billing & Transactions', module: 'admin' },
+  // Admin: SEO & Content (all ops consolidated)
+  { key: 'admin.seo.manage', displayName: 'Manage SEO & Content', module: 'admin' },
+  // Admin: Feature Flags (all ops consolidated)
+  { key: 'admin.ff.manage', displayName: 'Manage Feature Flags', module: 'admin' },
   // Admin: Security
   { key: 'admin.security.view', displayName: 'View Security Events', module: 'admin' },
-  { key: 'admin.security.manage_ip', displayName: 'Manage IP Blocklist', module: 'admin' },
-  { key: 'admin.security.revoke_sessions', displayName: 'Revoke Sessions', module: 'admin' },
-  { key: 'admin.security.kill_switch', displayName: 'Emergency Kill Switch', module: 'admin' },
-  // Admin: Feature Flags
-  { key: 'admin.feature_flag.list', displayName: 'List Feature Flags', module: 'admin' },
-  { key: 'admin.feature_flag.create', displayName: 'Create Feature Flag', module: 'admin' },
-  { key: 'admin.feature_flag.edit', displayName: 'Edit Feature Flag', module: 'admin' },
-  { key: 'admin.feature_flag.delete', displayName: 'Delete Feature Flag', module: 'admin' },
-  // Admin: CMS
-  { key: 'admin.cms.list', displayName: 'List CMS Pages', module: 'admin' },
-  { key: 'admin.cms.edit', displayName: 'Edit CMS Pages', module: 'admin' },
-  // Admin: SEO
-  { key: 'admin.seo.page.list', displayName: 'List SEO Pages', module: 'admin' },
-  { key: 'admin.seo.page.create', displayName: 'Create SEO Page', module: 'admin' },
-  { key: 'admin.seo.page.edit', displayName: 'Edit SEO Page', module: 'admin' },
-  { key: 'admin.seo.page.publish', displayName: 'Publish SEO Page', module: 'admin' },
-  { key: 'admin.seo.faq.manage', displayName: 'Manage FAQ', module: 'admin' },
-  { key: 'admin.seo.redirect.manage', displayName: 'Manage Redirects', module: 'admin' },
-  { key: 'admin.seo.answer.manage', displayName: 'Manage Answer Blocks', module: 'admin' },
+  { key: 'admin.security.manage', displayName: 'Manage Security', module: 'admin' },
   // Admin: Audit
   { key: 'admin.audit.view', displayName: 'View Audit Logs', module: 'admin' },
-  { key: 'admin.audit.export', displayName: 'Export Audit Logs', module: 'admin' },
-  // Admin: Support
-  { key: 'admin.support.view', displayName: 'View Support Notes', module: 'admin' },
-  { key: 'admin.support.edit', displayName: 'Edit Support Notes', module: 'admin' },
-  // System
-  { key: 'system.health', displayName: 'View System Health', module: 'system' },
-  { key: 'system.config', displayName: 'View System Config', module: 'system' },
+  // Admin: RBAC
+  { key: 'admin.rbac.view', displayName: 'View Roles & Permissions', module: 'admin' },
+  { key: 'admin.rbac.manage', displayName: 'Manage Roles & Permissions', module: 'admin' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  SUPER_ADMIN: ['*'], // all permissions
+  SYSTEM_ADMIN: ['*'], // all permissions
   ADMIN: [
     'admin.dashboard.view',
-    'admin.user.list','admin.user.view','admin.user.edit','admin.user.suspend','admin.user.assign_role',
-    'admin.mailbox.list','admin.mailbox.view','admin.mailbox.quarantine','admin.mailbox.restore','admin.mailbox.force_expire',
-    'admin.domain.list','admin.domain.create','admin.domain.edit','admin.domain.suspend','admin.domain.verify',
-    'admin.plan.list','admin.plan.create','admin.plan.edit','admin.plan.deactivate',
-    'admin.billing.view','admin.billing.refund',
-    'admin.feature_flag.list','admin.feature_flag.create','admin.feature_flag.edit','admin.feature_flag.delete',
-    'admin.cms.list','admin.cms.edit',
-    'admin.seo.page.list','admin.seo.page.create','admin.seo.page.edit','admin.seo.page.publish',
-    'admin.seo.faq.manage','admin.seo.redirect.manage','admin.seo.answer.manage',
-    'admin.audit.view','admin.support.view','admin.support.edit',
-    'system.health','system.config',
-  ],
-  SUPPORT: [
-    'admin.dashboard.view',
-    'admin.user.list','admin.user.view','admin.user.edit',
-    'admin.mailbox.list','admin.mailbox.view',
+    'admin.user.view', 'admin.user.manage',
+    'admin.mailbox.view', 'admin.mailbox.manage',
+    'admin.domain.view', 'admin.domain.manage',
+    'admin.plan.view', 'admin.plan.manage',
     'admin.billing.view',
+    'admin.seo.manage',
+    'admin.ff.manage',
+    'admin.security.view', 'admin.security.manage',
     'admin.audit.view',
-    'admin.support.view','admin.support.edit',
+    'admin.rbac.view', 'admin.rbac.manage',
   ],
-  FINANCE: [
-    'admin.dashboard.view',
-    'admin.user.list','admin.user.view',
-    'admin.billing.view','admin.billing.refund','admin.billing.adjust',
-    'admin.user.grant_credits',
-    'admin.audit.view',
+  // Customer gets all user-facing permissions; actual limits enforced by plan quotas
+  CUSTOMER: [
+    'account.read', 'account.update', 'account.delete',
+    'mailbox.create', 'mailbox.read', 'mailbox.delete', 'mailbox.extend',
+    'domain.create', 'domain.read', 'domain.update', 'domain.delete', 'domain.verify',
+    'billing.read', 'billing.topup', 'billing.subscribe',
   ],
-  SECURITY_AUDITOR: [
-    'admin.dashboard.view',
-    'admin.user.list','admin.user.view',
-    'admin.security.view','admin.security.manage_ip','admin.security.revoke_sessions',
-    'admin.audit.view','admin.audit.export',
-  ],
-  USER_FREE: ['account.read','account.update','account.delete','mailbox.create','mailbox.read','mailbox.delete','billing.read','billing.topup','domain.read'],
-  USER_PRO: ['account.read','account.update','account.delete','mailbox.create','mailbox.read','mailbox.delete','mailbox.extend','domain.create','domain.read','domain.update','domain.delete','domain.verify','billing.read','billing.topup','billing.subscribe'],
-  USER_BUSINESS: ['account.read','account.update','account.delete','mailbox.create','mailbox.read','mailbox.delete','mailbox.extend','domain.create','domain.read','domain.update','domain.delete','domain.verify','billing.read','billing.topup','billing.subscribe'],
 };
 
 // ── Plans ────────────────────────────────────────
@@ -228,38 +170,38 @@ export const PLANS = [
 // ── Users ────────────────────────────────────────
 export const USERS = [
   // Admin team
-  { email: 'admin@tempmail.dev', displayName: 'กิตติพัฒน์ ศรีสวัสดิ์', role: 'SUPER_ADMIN', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 90, mfa: true },
+  { email: 'admin@tempmail.dev', displayName: 'กิตติพัฒน์ ศรีสวัสดิ์', role: 'SYSTEM_ADMIN', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 90, mfa: true },
   { email: 'ops@tempmail.dev', displayName: 'นฤมล ชัยสิทธิ์', role: 'ADMIN', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 85, mfa: true },
-  { email: 'support@tempmail.dev', displayName: 'Sarah Mitchell', role: 'SUPPORT', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 75, mfa: false },
-  { email: 'finance@tempmail.dev', displayName: 'ปราณี วงษ์ชัย', role: 'FINANCE', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 80, mfa: true },
-  { email: 'security@tempmail.dev', displayName: 'James Chen', role: 'SECURITY_AUDITOR', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 70, mfa: true },
+  { email: 'support@tempmail.dev', displayName: 'Sarah Mitchell', role: 'ADMIN', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 75, mfa: false },
+  { email: 'finance@tempmail.dev', displayName: 'ปราณี วงษ์ชัย', role: 'ADMIN', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 80, mfa: true },
+  { email: 'security@tempmail.dev', displayName: 'James Chen', role: 'ADMIN', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 70, mfa: true },
   // Pro users
-  { email: 'somchai.dev@gmail.com', displayName: 'สมชาย ใจดี', role: 'USER_PRO', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 60, mfa: true },
-  { email: 'natthaporn.k@outlook.com', displayName: 'ณัฐพร เกษมสุข', role: 'USER_PRO', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 45, mfa: false },
-  { email: 'alex.johnson@proton.me', displayName: 'Alex Johnson', role: 'USER_PRO', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 55, mfa: true },
+  { email: 'somchai.dev@gmail.com', displayName: 'สมชาย ใจดี', role: 'CUSTOMER', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 60, mfa: true },
+  { email: 'natthaporn.k@outlook.com', displayName: 'ณัฐพร เกษมสุข', role: 'CUSTOMER', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 45, mfa: false },
+  { email: 'alex.johnson@proton.me', displayName: 'Alex Johnson', role: 'CUSTOMER', plan: 'pro', status: 'ACTIVE' as const, daysAgo: 55, mfa: true },
   // Business users
-  { email: 'enterprise@bigcorp.co.th', displayName: 'วิชัย องค์กรใหญ่', role: 'USER_BUSINESS', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 40, mfa: true },
-  { email: 'dev-team@startup.io', displayName: 'Dev Team Lead', role: 'USER_BUSINESS', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 30, mfa: true },
+  { email: 'enterprise@bigcorp.co.th', displayName: 'วิชัย องค์กรใหญ่', role: 'CUSTOMER', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 40, mfa: true },
+  { email: 'dev-team@startup.io', displayName: 'Dev Team Lead', role: 'CUSTOMER', plan: 'enterprise', status: 'ACTIVE' as const, daysAgo: 30, mfa: true },
   // Starter users
-  { email: 'wipawan.s@gmail.com', displayName: 'วิภาวรรณ สุขสวัสดิ์', role: 'USER_PRO', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 40, mfa: false },
-  { email: 'mike.torres@yahoo.com', displayName: 'Mike Torres', role: 'USER_PRO', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 35, mfa: false },
-  { email: 'rungnapa.t@hotmail.com', displayName: 'รุ่งนภา ทองเจริญ', role: 'USER_PRO', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 28, mfa: false },
-  { email: 'david.kim@gmail.com', displayName: 'David Kim', role: 'USER_PRO', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 20, mfa: false },
+  { email: 'wipawan.s@gmail.com', displayName: 'วิภาวรรณ สุขสวัสดิ์', role: 'CUSTOMER', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 40, mfa: false },
+  { email: 'mike.torres@yahoo.com', displayName: 'Mike Torres', role: 'CUSTOMER', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 35, mfa: false },
+  { email: 'rungnapa.t@hotmail.com', displayName: 'รุ่งนภา ทองเจริญ', role: 'CUSTOMER', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 28, mfa: false },
+  { email: 'david.kim@gmail.com', displayName: 'David Kim', role: 'CUSTOMER', plan: 'starter', status: 'ACTIVE' as const, daysAgo: 20, mfa: false },
   // Free users
-  { email: 'tanawat.p@gmail.com', displayName: 'ธนวัฒน์ ประเสริฐ', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 50, mfa: false },
-  { email: 'jessica.wong@gmail.com', displayName: 'Jessica Wong', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 42, mfa: false },
-  { email: 'kanchana.r@outlook.com', displayName: 'กาญจนา รุ่งเรือง', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 38, mfa: false },
-  { email: 'tom.harris@gmail.com', displayName: 'Tom Harris', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 30, mfa: false },
-  { email: 'siriporn.w@gmail.com', displayName: 'ศิริพร วงศ์สวัสดิ์', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 25, mfa: false },
-  { email: 'anong.k@hotmail.com', displayName: 'อนงค์ เกียรติยศ', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 18, mfa: false },
-  { email: 'chris.brown@outlook.com', displayName: 'Chris Brown', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 12, mfa: false },
-  { email: 'pawit.s@gmail.com', displayName: 'ภวิศ สมบูรณ์', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 8, mfa: false },
-  { email: 'nina.petrov@gmail.com', displayName: 'Nina Petrov', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 5, mfa: false },
-  { email: 'kamol.j@gmail.com', displayName: 'กมล จันทร์เพ็ญ', role: 'USER_FREE', plan: 'free', status: 'ACTIVE' as const, daysAgo: 3, mfa: false },
+  { email: 'tanawat.p@gmail.com', displayName: 'ธนวัฒน์ ประเสริฐ', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 50, mfa: false },
+  { email: 'jessica.wong@gmail.com', displayName: 'Jessica Wong', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 42, mfa: false },
+  { email: 'kanchana.r@outlook.com', displayName: 'กาญจนา รุ่งเรือง', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 38, mfa: false },
+  { email: 'tom.harris@gmail.com', displayName: 'Tom Harris', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 30, mfa: false },
+  { email: 'siriporn.w@gmail.com', displayName: 'ศิริพร วงศ์สวัสดิ์', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 25, mfa: false },
+  { email: 'anong.k@hotmail.com', displayName: 'อนงค์ เกียรติยศ', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 18, mfa: false },
+  { email: 'chris.brown@outlook.com', displayName: 'Chris Brown', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 12, mfa: false },
+  { email: 'pawit.s@gmail.com', displayName: 'ภวิศ สมบูรณ์', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 8, mfa: false },
+  { email: 'nina.petrov@gmail.com', displayName: 'Nina Petrov', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 5, mfa: false },
+  { email: 'kamol.j@gmail.com', displayName: 'กมล จันทร์เพ็ญ', role: 'CUSTOMER', plan: 'free', status: 'ACTIVE' as const, daysAgo: 3, mfa: false },
   // Churned / suspended / banned
-  { email: 'banned.spammer@mail.com', displayName: 'SpamBot3000', role: 'USER_FREE', plan: 'free', status: 'BANNED' as const, daysAgo: 65, mfa: false },
-  { email: 'suspended.user@outlook.com', displayName: 'ปิยะ ละเมิด', role: 'USER_FREE', plan: 'free', status: 'SUSPENDED' as const, daysAgo: 47, mfa: false },
-  { email: 'deactivated@old.com', displayName: 'Deactivated User', role: 'USER_FREE', plan: 'free', status: 'DEACTIVATED' as const, daysAgo: 80, mfa: false },
+  { email: 'banned.spammer@mail.com', displayName: 'SpamBot3000', role: 'CUSTOMER', plan: 'free', status: 'BANNED' as const, daysAgo: 65, mfa: false },
+  { email: 'suspended.user@outlook.com', displayName: 'ปิยะ ละเมิด', role: 'CUSTOMER', plan: 'free', status: 'SUSPENDED' as const, daysAgo: 47, mfa: false },
+  { email: 'deactivated@old.com', displayName: 'Deactivated User', role: 'CUSTOMER', plan: 'free', status: 'DEACTIVATED' as const, daysAgo: 80, mfa: false },
 ];
 
 // ── Domains ─────────────────────────────────────
@@ -304,10 +246,10 @@ export const FEATURE_FLAGS = [
   { key: 'api_v2', name: 'API V2 Access', description: 'Next-gen REST/GraphQL API', enabled: false, rolloutPct: 0 },
   { key: 'dark_mode', name: 'Dark Mode', description: 'Dark theme toggle', enabled: true, rolloutPct: 100 },
   { key: 'bulk_mailbox_create', name: 'Bulk Mailbox Creation', description: 'Create multiple mailboxes at once', enabled: true, rolloutPct: 100, targetPlans: ['enterprise'] },
-  { key: 'advanced_analytics', name: 'Advanced Analytics', description: 'Detailed usage analytics', enabled: true, rolloutPct: 30, targetRoles: ['SUPER_ADMIN','ADMIN'] },
+  { key: 'advanced_analytics', name: 'Advanced Analytics', description: 'Detailed usage analytics', enabled: true, rolloutPct: 30, targetRoles: ['SYSTEM_ADMIN','ADMIN'] },
   { key: 'webhook_notifications', name: 'Webhook Notifications', description: 'Webhooks on new messages', enabled: false, rolloutPct: 0 },
-  { key: 'mfa_enforcement', name: 'MFA Enforcement', description: 'Require MFA for admin logins', enabled: true, rolloutPct: 100, targetRoles: ['SUPER_ADMIN','ADMIN','FINANCE','SECURITY_AUDITOR'] },
-  { key: 'approval_workflow', name: 'Approval Workflow', description: 'Dual-admin approval for high-risk actions', enabled: true, rolloutPct: 100, targetRoles: ['SUPER_ADMIN','ADMIN'] },
+  { key: 'mfa_enforcement', name: 'MFA Enforcement', description: 'Require MFA for admin logins', enabled: true, rolloutPct: 100, targetRoles: ['SYSTEM_ADMIN','ADMIN'] },
+  { key: 'approval_workflow', name: 'Approval Workflow', description: 'Dual-admin approval for high-risk actions', enabled: true, rolloutPct: 100, targetRoles: ['SYSTEM_ADMIN','ADMIN'] },
   { key: 'step_up_auth', name: 'Step-Up Authentication', description: 'Require fresh session for sensitive actions', enabled: true, rolloutPct: 100 },
 ];
 

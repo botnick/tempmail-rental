@@ -5,6 +5,7 @@ import { AuditService } from './audit.service';
 import type { Actor } from '../lib/types';
 import { randomHex } from '../lib/crypto';
 import { DomainStatus } from '@prisma/client';
+import { verifyOwnership, checkMxRecord, checkSpfRecord, checkAllDns, type DnsCheckResult } from '../lib/dns.utils';
 
 // ─── Input Schemas ──────────────────────────────
 
@@ -15,6 +16,18 @@ export const createDomainSchema = z.object({
 export const verifyDomainSchema = z.object({
   domainId: z.string(),
 });
+
+export const checkDnsSchema = z.object({
+  domainId: z.string(),
+});
+
+// ─── Types ──────────────────────────────────────
+
+export interface VerifyResult {
+  verified: boolean;
+  checks: DnsCheckResult;
+  error?: string;
+}
 
 // ─── Service ────────────────────────────────────
 
@@ -76,6 +89,7 @@ export const DomainService = {
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { mailboxes: true } },
+        verifications: { where: { verified: false } },
       },
     });
 
@@ -87,11 +101,27 @@ export const DomainService = {
       catchAll: d.catchAll,
       mailboxCount: d._count.mailboxes,
       createdAt: d.createdAt,
+      verification: d.verifications[0] ? {
+        recordType: d.verifications[0].recordType,
+        recordName: d.verifications[0].recordName,
+        recordValue: d.verifications[0].recordValue,
+      } : null,
     }));
   },
 
-  /** Verify domain ownership via DNS TXT record lookup (structure — actual DNS check would be a background job) */
-  async verify(domainPublicId: string, actor: Actor) {
+  /**
+   * Verify domain ownership via real DNS TXT record lookup.
+   *
+   * Flow:
+   * 1. Find domain + pending verification
+   * 2. Check expiry (72h from creation)
+   * 3. DNS lookup: _tempmail-verify.<domain> for the expected token
+   * 4. If found → mark verified in DB, update domain status, log audit
+   * 5. Also check MX + SPF (informational, does not block verify)
+   *
+   * Resilience: DNS failure = { verified: false } — never crashes
+   */
+  async verify(domainPublicId: string, actor: Actor): Promise<VerifyResult> {
     const domain = await prisma.domain.findUnique({
       where: { publicId: domainPublicId },
       include: { verifications: { where: { verified: false } } },
@@ -105,13 +135,118 @@ export const DomainService = {
       throw new ValidationError('No pending verifications');
     }
 
-    // NOTE: In production, this would trigger a DNS lookup background job.
-    // For now, we mark it as needing verification and return the record to set.
-    return {
-      id: domain.publicId,
-      name: domain.name,
-      verification: domain.verifications[0],
-      message: 'Please add the TXT record to your DNS and retry verification.',
+    const verification = domain.verifications[0];
+
+    // Check expiry
+    if (verification.expiresAt < new Date()) {
+      return {
+        verified: false,
+        checks: {
+          ownership: { found: false, error: 'Verification token expired — please delete and re-add the domain' },
+          mx: { found: false, pointsToUs: false },
+          spf: { found: false, includesUs: false },
+        },
+        error: 'expired',
+      };
+    }
+
+    // Real DNS lookup — isolated, max 3s timeout, circuit breaker protected
+    // Run ownership + MX + SPF all in parallel for best latency
+    const [ownershipResult, mxResult, spfResult] = await Promise.all([
+      verifyOwnership(domain.name, verification.recordValue),
+      checkMxRecord(domain.name),
+      checkSpfRecord(domain.name),
+    ]);
+
+    const dnsChecks: DnsCheckResult = {
+      ownership: { found: ownershipResult.verified, error: ownershipResult.error },
+      mx: mxResult,
+      spf: spfResult,
     };
+
+    if (ownershipResult.verified) {
+      // ═══ SUCCESS: Mark verified in DB ═══
+      await prisma.$transaction([
+        prisma.domainVerification.update({
+          where: { id: verification.id },
+          data: { verified: true, verifiedAt: new Date() },
+        }),
+        prisma.domain.update({
+          where: { id: domain.id },
+          data: { status: DomainStatus.VERIFIED },
+        }),
+      ]);
+
+      await AuditService.log({
+        actorId: actor.userId,
+        actorType: 'user',
+        action: 'domain.verify',
+        targetType: 'domain',
+        targetId: domain.id,
+        after: { status: 'VERIFIED', mx: mxResult.pointsToUs, spf: spfResult.includesUs },
+      });
+
+      return { verified: true, checks: dnsChecks };
+    }
+
+    // ═══ FAIL: Token not found — return status, don't throw ═══
+    return {
+      verified: false,
+      checks: dnsChecks,
+      error: ownershipResult.error || 'not_found',
+    };
+  },
+
+  /**
+   * Check DNS status for a domain without modifying verification.
+   * Returns current state of Ownership TXT, MX, and SPF records.
+   * Completely non-destructive — read-only DNS check.
+   */
+  async checkDns(domainPublicId: string, actor: Actor): Promise<DnsCheckResult> {
+    const domain = await prisma.domain.findUnique({
+      where: { publicId: domainPublicId },
+      include: {
+        // Include ALL verifications (not just unverified) so we can re-check ownership
+        verifications: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+    });
+
+    if (!domain || domain.userId !== actor.userId) {
+      throw new NotFoundError('Domain');
+    }
+
+    const token = domain.verifications[0]?.recordValue;
+    return checkAllDns(domain.name, token);
+  },
+
+  /** Delete a domain (soft delete) */
+  async delete(domainPublicId: string, actor: Actor, meta?: { requestId?: string }) {
+    const domain = await prisma.domain.findUnique({
+      where: { publicId: domainPublicId },
+    });
+
+    if (!domain || domain.userId !== actor.userId) {
+      throw new NotFoundError('Domain');
+    }
+
+    await prisma.domain.update({
+      where: { id: domain.id },
+      data: { 
+        deletedAt: new Date(),
+        status: DomainStatus.ARCHIVED
+      },
+    });
+
+    await AuditService.log({
+      actorId: actor.userId,
+      actorType: 'user',
+      action: 'domain.delete',
+      targetType: 'domain',
+      targetId: domain.id,
+      after: { status: 'ARCHIVED' },
+      requestId: meta?.requestId,
+    });
+
+    return { success: true };
   },
 };

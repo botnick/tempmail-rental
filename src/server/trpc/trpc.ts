@@ -4,6 +4,7 @@ import type { TRPCContext } from './context';
 import type { PermissionKey } from '../policy/permissions';
 import { hasPermission, isAdmin } from '../policy/rbac';
 import { logger } from '../lib/logger';
+import { env } from '../config/env';
 
 /**
  * tRPC initialization with superjson transformer (supports Date, BigInt, etc.)
@@ -16,7 +17,7 @@ const t = initTRPC.context<TRPCContext>().create({
       data: {
         ...shape.data,
         // Strip internals in production
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        stack: env.NODE_ENV === 'development' ? error.stack : undefined,
       },
     };
   },
@@ -105,7 +106,7 @@ export const adminProcedure = t.procedure
 
 /**
  * Permission procedure factory — requires a specific permission.
- * Usage: permissionProcedure(PERMISSIONS.ADMIN_USER_LIST)
+ * Usage: permissionProcedure(PERMISSIONS.ADMIN_USER_VIEW)
  */
 export function permissionProcedure(permission: PermissionKey) {
   return t.procedure
@@ -137,7 +138,7 @@ export function rateLimitedProcedure(policyKey: string) {
     .use(
       middleware(async ({ ctx, next }) => {
         // Skip rate limiting if disabled via env
-        if (process.env.RATE_LIMIT_ENABLED === 'false') {
+        if (!env.RATE_LIMIT_ENABLED) {
           return next({ ctx });
         }
 

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService, loginSchema } from '@/server/services/auth.service';
+import { restRateLimit, rateLimitResponse } from '@/server/middleware/rest-rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
+    // ─── Rate limit: 5 attempts per 15 min ───────────
+    const rl = await restRateLimit(req, 'auth.login');
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
 
@@ -18,18 +23,28 @@ export async function POST(req: NextRequest) {
 
     const result = await AuthService.login(parsed.data, { ip, userAgent });
 
+    // MFA challenge — return token, don't create session yet
+    if ('mfaRequired' in result && result.mfaRequired) {
+      return NextResponse.json({
+        mfaRequired: true,
+        mfaToken: result.mfaToken,
+        user: result.user,
+      });
+    }
+
     const response = NextResponse.json({
       user: result.user,
       expiresAt: result.expiresAt,
     });
 
-    // Set HttpOnly session cookie
+    // Set HttpOnly session cookie — maxAge matches actual session TTL
+    const sessionMaxAge = Math.ceil((result.expiresAt.getTime() - Date.now()) / 1000);
     response.cookies.set('session_token', result.sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: sessionMaxAge,
     });
 
     // Store refresh token in separate cookie
@@ -45,8 +60,16 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const error = err as { code?: string; statusCode?: number; message?: string };
     const status = error.statusCode ?? (error.code === 'CREDENTIAL_ERROR' ? 401 : 500);
+
+    // Sanitize: only return safe messages in production
+    const safeMessages: Record<string, string> = {
+      CREDENTIAL_ERROR: 'Invalid email or password',
+      ACCOUNT_SUSPENDED: 'Account has been suspended',
+    };
+    const message = safeMessages[error.code ?? ''] ?? 'Login failed';
+
     return NextResponse.json(
-      { error: error.message ?? 'Login failed' },
+      { error: message },
       { status }
     );
   }

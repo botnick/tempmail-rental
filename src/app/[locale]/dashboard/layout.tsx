@@ -1,5 +1,6 @@
 import { getDictionary } from '@/dictionaries';
 import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar';
+import { EmailVerificationBanner } from '@/components/dashboard/EmailVerificationBanner';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,10 @@ export default async function DashboardLayout({
 
       <DashboardSidebar locale={locale} dict={dict as any} />
 
-      <main className="flex-1 p-8 overflow-auto relative z-10">{children}</main>
+      <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-auto relative z-10">
+        <EmailVerificationBanner dict={(dict as any).dashboard ?? {}} />
+        {children}
+      </main>
     </div>
   );
 }

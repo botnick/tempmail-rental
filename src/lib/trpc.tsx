@@ -1,7 +1,7 @@
 'use client';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { httpBatchLink } from '@trpc/client';
+import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
+import { httpBatchLink, TRPCClientError } from '@trpc/client';
 import { createTRPCReact } from '@trpc/react-query';
 import { useState } from 'react';
 import superjson from 'superjson';
@@ -14,6 +14,23 @@ function getBaseUrl() {
   return process.env.APP_URL ?? 'http://localhost:3000';
 }
 
+/**
+ * Global handler: redirect to login when session expires (UNAUTHORIZED).
+ * Prevents duplicate redirects using a simple flag.
+ */
+let isRedirecting = false;
+function handleAuthError(error: unknown) {
+  if (isRedirecting) return;
+  if (
+    error instanceof TRPCClientError &&
+    error.data?.code === 'UNAUTHORIZED' &&
+    typeof window !== 'undefined'
+  ) {
+    isRedirecting = true;
+    window.location.href = '/login';
+  }
+}
+
 export function TRPCProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -21,9 +38,21 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 5 * 1000,
-            retry: 1,
+            retry: (failureCount, error) => {
+              // Don't retry on auth errors — redirect instead
+              if (error instanceof TRPCClientError && error.data?.code === 'UNAUTHORIZED') {
+                return false;
+              }
+              return failureCount < 1;
+            },
+          },
+          mutations: {
+            onError: handleAuthError,
           },
         },
+        queryCache: new QueryCache({
+          onError: handleAuthError,
+        }),
       })
   );
 
@@ -47,3 +76,4 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
     </trpc.Provider>
   );
 }
+

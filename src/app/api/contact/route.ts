@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/server/db';
+import { restRateLimit, rateLimitResponse } from '@/server/middleware/rest-rate-limit';
+import { logger } from '@/server/lib/logger';
 
 const contactSchema = z.object({
   name: z.string().min(1).max(200),
@@ -11,6 +13,10 @@ const contactSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // ─── Rate limit: 3 requests per 15 min ───────────
+    const rl = await restRateLimit(req, 'contact.submit');
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
     const body = await req.json();
     const data = contactSchema.parse(body);
 
@@ -36,7 +42,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.error('Contact form error:', err);
+    logger.error('Contact form error', { error: err instanceof Error ? err : new Error(String(err)) });
     return NextResponse.json(
       { error: 'Failed to submit' },
       { status: 500 }

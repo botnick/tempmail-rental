@@ -9,6 +9,7 @@
  */
 
 import argon2 from 'argon2';
+import { env } from '../config/env';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -19,8 +20,7 @@ const ARGON2_OPTIONS: argon2.Options = {
 };
 
 function getPepper(): Buffer | undefined {
-  const secret = process.env.ARGON2_SECRET;
-  return secret ? Buffer.from(secret, 'utf-8') : undefined;
+  return env.ARGON2_SECRET ? Buffer.from(env.ARGON2_SECRET, 'utf-8') : undefined;
 }
 
 /**

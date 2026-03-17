@@ -1,20 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { env } from '../config/env';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL is not set');
-  }
-
   const pool = new Pool({
-    connectionString,
-    max: parseInt(process.env.DB_POOL_MAX ?? '20', 10),
+    connectionString: env.DATABASE_URL,
+    max: env.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     statement_timeout: 30_000,         // Kill long-running queries
@@ -25,7 +21,7 @@ function createPrismaClient() {
   return new PrismaClient({
     adapter,
     log:
-      process.env.NODE_ENV === 'development'
+      env.NODE_ENV === 'development'
         ? ['query', 'error', 'warn']
         : ['error'],
   });
@@ -34,8 +30,17 @@ function createPrismaClient() {
 export const prisma =
   globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== 'production') {
+if (env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
+}
+
+// Graceful shutdown — prevents connection leaks on restart/deploy
+if (typeof process !== 'undefined') {
+  const shutdown = async () => {
+    await prisma.$disconnect();
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 export type { PrismaClient };

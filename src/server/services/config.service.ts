@@ -1,15 +1,31 @@
 import { prisma } from '../db';
+import { LRUCache } from 'lru-cache';
 
 /**
  * Config Service — runtime configuration from the config_entries table.
- * Used for system-level settings that can be changed without deployment.
+ * Uses LRU cache (60s TTL, max 200 entries) to avoid DB queries on every request.
+ * At 10K+ users, this prevents ~20K DB reads/min for config alone.
  */
+
+const cache = new LRUCache<string, { v: string | null }>({
+  max: 200,
+  ttl: 60_000, // 60 seconds
+});
+
 export const ConfigService = {
   async get(key: string): Promise<string | null> {
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached.v;
+    }
+
     const entry = await prisma.configEntry.findUnique({
       where: { key },
     });
-    return entry?.value ?? null;
+    const value = entry?.value ?? null;
+
+    cache.set(key, { v: value });
+    return value;
   },
 
   async getNumber(key: string, defaultValue: number): Promise<number> {
@@ -46,6 +62,9 @@ export const ConfigService = {
         updatedBy: meta?.updatedBy,
       },
     });
+
+    // Update cache immediately on write
+    cache.set(key, { v: value });
   },
 
   async getByCategory(category: string) {
@@ -62,5 +81,10 @@ export const ConfigService = {
       description: e.description,
       updatedAt: e.updatedAt,
     }));
+  },
+
+  /** Clear all cached config entries */
+  clearCache() {
+    cache.clear();
   },
 };

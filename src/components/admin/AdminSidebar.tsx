@@ -13,9 +13,9 @@ import {
 /**
  * Admin nav items with role-based access control.
  * Each item specifies which roles can see it.
- * SUPER_ADMIN sees everything.
+ * SYSTEM_ADMIN sees everything.
  */
-const ALL_ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPPORT', 'FINANCE', 'SECURITY_AUDITOR'];
+const ALL_ADMIN_ROLES = ['SYSTEM_ADMIN', 'ADMIN'];
 
 function getAdminNavItems(locale: string, dict: Record<string, string>) {
   return [
@@ -23,68 +23,80 @@ function getAdminNavItems(locale: string, dict: Record<string, string>) {
       href: `/${locale}/admin`,
       icon: LayoutDashboard,
       label: dict.dashboard,
-      roles: ALL_ADMIN_ROLES, // all admins
+      roles: ALL_ADMIN_ROLES,
       exact: true,
     },
     {
       href: `/${locale}/admin/users`,
       icon: Users,
       label: dict.users,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'SUPPORT'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/mailboxes`,
       icon: Mail,
       label: dict.mailboxes,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'SUPPORT'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/domains`,
       icon: Globe,
       label: dict.domains,
-      roles: ['SUPER_ADMIN', 'ADMIN'],
+      roles: ALL_ADMIN_ROLES,
+    },
+    {
+      href: `/${locale}/admin/tempmail`,
+      icon: Mail,
+      label: dict.tempMail || 'TempMail API',
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/plans`,
       icon: Package,
       label: dict.plans,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'FINANCE'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/billing`,
       icon: CreditCard,
       label: dict.billing,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'FINANCE'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/security`,
       icon: Shield,
       label: dict.security,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'SECURITY_AUDITOR'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/feature-flags`,
       icon: Flag,
       label: dict.featureFlags,
-      roles: ['SUPER_ADMIN', 'ADMIN'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/cms`,
       icon: FileText,
       label: dict.cms,
-      roles: ['SUPER_ADMIN', 'ADMIN'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/seo`,
       icon: Search,
       label: dict.seo ?? 'SEO',
-      roles: ['SUPER_ADMIN', 'ADMIN'],
+      roles: ALL_ADMIN_ROLES,
     },
     {
       href: `/${locale}/admin/audit`,
       icon: ScrollText,
       label: dict.audit,
-      roles: ['SUPER_ADMIN', 'ADMIN', 'SECURITY_AUDITOR'],
+      roles: ALL_ADMIN_ROLES,
+    },
+    {
+      href: `/${locale}/admin/rbac`,
+      icon: Shield,
+      label: dict.rbac ?? 'RBAC',
+      roles: ALL_ADMIN_ROLES,
     },
   ];
 }
@@ -103,12 +115,12 @@ export function AdminSidebar({ locale, dict }: AdminSidebarProps) {
   const AdminLogo = BRAND.adminLogo;
 
   const roles: string[] = (me.data as any)?.roles ?? [];
-  const isSuperAdmin = roles.includes('SUPER_ADMIN');
+  const isSystemAdmin = roles.includes('SYSTEM_ADMIN');
 
   const allItems = getAdminNavItems(locale, dict.admin);
 
-  // SUPER_ADMIN sees everything; others see only items matching their roles
-  const visibleItems = isSuperAdmin
+  // SYSTEM_ADMIN sees everything; others see only items matching their roles
+  const visibleItems = isSystemAdmin
     ? allItems
     : allItems.filter((item) => item.roles.some((r) => roles.includes(r)));
 

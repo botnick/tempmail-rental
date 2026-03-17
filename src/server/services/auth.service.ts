@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { prisma } from '../db';
-import argon2 from 'argon2';
+import { hashPassword, verifyPassword } from '../auth/password';
 import { generateSecureToken } from '../lib/id';
 import { hashToken } from '../lib/crypto';
 import { CredentialError, ConflictError, NotFoundError, AppError } from '../lib/errors';
 import { AuditService } from './audit.service';
+import { ConfigService } from './config.service';
 import { logger } from '../lib/logger';
-import { PlanStatus, SubscriptionStatus } from '@prisma/client';
+import { PlanStatus, SubscriptionStatus, TokenType } from '@prisma/client';
 import { env } from '../config/env';
 
 // ─── Input Schemas ──────────────────────────────
@@ -40,16 +41,11 @@ export const AuthService = {
       throw new ConflictError('An account with this email already exists');
     }
 
-    const passwordHash = await argon2.hash(input.password, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4,
-    });
+    const passwordHash = await hashPassword(input.password);
 
     // Find default free role
     const freeRole = await prisma.role.findUnique({
-      where: { name: 'USER_FREE' },
+      where: { name: 'CUSTOMER' },
     });
 
     // Find default plan
@@ -123,19 +119,20 @@ export const AuthService = {
       throw new CredentialError();
     }
 
-    // Check if account is locked
+    // Check if account is locked — return same error to prevent enumeration
     if (
       user.credential.lockedUntil &&
       user.credential.lockedUntil > new Date()
     ) {
-      throw new AppError('Account temporarily locked', 'ACCOUNT_LOCKED', 429);
+      logger.warn('Login attempt on locked account', { userId: user.id });
+      throw new CredentialError();
     }
 
     if (user.status !== 'ACTIVE') {
       throw new CredentialError();
     }
 
-    const validPassword = await argon2.verify(
+    const validPassword = await verifyPassword(
       user.credential.passwordHash,
       input.password
     );
@@ -143,14 +140,15 @@ export const AuthService = {
     if (!validPassword) {
       // Increment failed attempts
       const failedAttempts = user.credential.failedAttempts + 1;
-      const lockThreshold = 5; // TODO: make configurable from config_entries
+      const lockThreshold = await ConfigService.getNumber('auth.lock_threshold', 5);
+      const lockDurationMin = await ConfigService.getNumber('auth.lock_duration_minutes', 15);
 
       await prisma.userCredential.update({
         where: { userId: user.id },
         data: {
           failedAttempts,
           ...(failedAttempts >= lockThreshold
-            ? { lockedUntil: new Date(Date.now() + 15 * 60 * 1000) }
+            ? { lockedUntil: new Date(Date.now() + lockDurationMin * 60 * 1000) }
             : {}),
         },
       });
@@ -163,6 +161,34 @@ export const AuthService = {
       where: { userId: user.id },
       data: { failedAttempts: 0, lockedUntil: null },
     });
+
+    // Check if MFA is enabled
+    if (user.credential.totpEnabled) {
+      // Generate MFA challenge token (5 min TTL)
+      const mfaToken = generateSecureToken();
+      const mfaTokenHash = hashToken(mfaToken);
+
+      await prisma.verificationToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: mfaTokenHash,
+          type: TokenType.MFA_CHALLENGE,
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        },
+      });
+
+      logger.info('MFA challenge issued', { userId: user.id });
+
+      return {
+        mfaRequired: true as const,
+        mfaToken,
+        user: {
+          id: user.publicId,
+          email: user.email,
+          displayName: user.displayName,
+        },
+      };
+    }
 
     // Create session
     const sessionToken = generateSecureToken();
@@ -182,7 +208,7 @@ export const AuthService = {
         isAdmin,
         expiresAt: new Date(
           Date.now() +
-            (isAdmin ? 15 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)
+            (isAdmin ? env.ADMIN_SESSION_TTL_SECONDS * 1000 : env.USER_SESSION_TTL_SECONDS * 1000)
         ),
       },
     });
@@ -207,6 +233,51 @@ export const AuthService = {
         email: user.email,
         displayName: user.displayName,
       },
+    };
+  },
+
+  /**
+   * Create a session for a user (used after MFA verification).
+   * Does not validate credentials — caller is responsible for authentication.
+   */
+  async createSessionForUser(userId: string, meta?: { ip?: string; userAgent?: string; requestId?: string }) {
+    const sessionToken = generateSecureToken();
+    const refreshToken = generateSecureToken();
+    const tokenHash = hashToken(sessionToken);
+    const refreshTokenHash = hashToken(refreshToken);
+
+    const isAdmin = await this.checkIsAdmin(userId);
+
+    const session = await prisma.session.create({
+      data: {
+        userId,
+        tokenHash,
+        refreshTokenHash,
+        ipAddress: meta?.ip,
+        userAgent: meta?.userAgent,
+        isAdmin,
+        expiresAt: new Date(
+          Date.now() +
+            (isAdmin ? env.ADMIN_SESSION_TTL_SECONDS * 1000 : env.USER_SESSION_TTL_SECONDS * 1000)
+        ),
+      },
+    });
+
+    await AuditService.log({
+      actorId: userId,
+      actorType: 'user',
+      action: 'user.login.mfa',
+      targetType: 'session',
+      targetId: session.id,
+      ipAddress: meta?.ip ?? undefined,
+      userAgent: meta?.userAgent ?? undefined,
+      requestId: meta?.requestId,
+    });
+
+    return {
+      sessionToken,
+      refreshToken,
+      expiresAt: session.expiresAt,
     };
   },
 
@@ -248,7 +319,7 @@ export const AuthService = {
 
   /** Check if user has admin role */
   async checkIsAdmin(userId: string): Promise<boolean> {
-    const adminRoles = ['SUPER_ADMIN', 'ADMIN', 'SUPPORT', 'FINANCE', 'SECURITY_AUDITOR'];
+    const adminRoles = ['SYSTEM_ADMIN', 'ADMIN'];
     const userRole = await prisma.userRole.findFirst({
       where: {
         userId,
@@ -302,7 +373,7 @@ export const AuthService = {
         isAdmin: session.isAdmin,
         expiresAt: new Date(
           Date.now() +
-            (session.isAdmin ? 15 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)
+            (session.isAdmin ? env.ADMIN_SESSION_TTL_SECONDS * 1000 : env.USER_SESSION_TTL_SECONDS * 1000)
         ),
       },
     });
@@ -330,13 +401,23 @@ export const AuthService = {
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Store verification token (upsert to allow re-requests)
-    await prisma.userCredential.update({
-      where: { userId },
+    // Invalidate any existing email verification tokens for this user
+    await prisma.verificationToken.updateMany({
+      where: {
+        userId,
+        type: TokenType.EMAIL_VERIFY,
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+
+    // Create new verification token
+    await prisma.verificationToken.create({
       data: {
-        // Using totpSecret field temporarily for email verification token
-        // In production, add a dedicated EmailVerificationToken model
-        totpSecret: `email_verify:${tokenHash}:${expiresAt.toISOString()}`,
+        userId,
+        tokenHash,
+        type: TokenType.EMAIL_VERIFY,
+        expiresAt,
       },
     });
 
@@ -363,7 +444,10 @@ export const AuthService = {
     });
 
     logger.info('Email verification requested', { userId });
-    return { sent: true, token }; // Token returned only in dev for testing
+    if (env.NODE_ENV === 'development') {
+      logger.debug('DEV ONLY — Email verification token (do not use in production)', { token });
+    }
+    return { sent: true };
   },
 
   /**
@@ -372,48 +456,45 @@ export const AuthService = {
   async verifyEmail(token: string, meta?: { requestId?: string }) {
     const tokenHash = hashToken(token);
 
-    // Find credential with matching token
-    const credentials = await prisma.userCredential.findMany({
-      where: {
-        totpSecret: { startsWith: `email_verify:${tokenHash}:` },
-      },
-      include: { user: true },
+    // Find valid token
+    const verificationToken = await prisma.verificationToken.findUnique({
+      where: { tokenHash },
     });
 
-    if (credentials.length === 0) {
+    if (!verificationToken || verificationToken.type !== TokenType.EMAIL_VERIFY) {
       throw new AppError('Invalid or expired verification token', 'INVALID_TOKEN', 400);
     }
 
-    const credential = credentials[0];
-    const parts = credential.totpSecret?.split(':') ?? [];
-    const expiresAt = parts[2] ? new Date(parts[2]) : new Date(0);
+    if (verificationToken.usedAt) {
+      throw new AppError('Verification token already used', 'TOKEN_USED', 400);
+    }
 
-    if (expiresAt < new Date()) {
+    if (verificationToken.expiresAt < new Date()) {
       throw new AppError('Verification token expired', 'TOKEN_EXPIRED', 400);
     }
 
-    // Mark email as verified
+    // Mark email as verified and consume the token
     await prisma.$transaction([
       prisma.user.update({
-        where: { id: credential.userId },
+        where: { id: verificationToken.userId },
         data: { emailVerifiedAt: new Date() },
       }),
-      prisma.userCredential.update({
-        where: { userId: credential.userId },
-        data: { totpSecret: null },
+      prisma.verificationToken.update({
+        where: { id: verificationToken.id },
+        data: { usedAt: new Date() },
       }),
     ]);
 
     await AuditService.log({
-      actorId: credential.userId,
+      actorId: verificationToken.userId,
       actorType: 'user',
       action: 'user.email_verification.complete',
       targetType: 'user',
-      targetId: credential.userId,
+      targetId: verificationToken.userId,
       requestId: meta?.requestId,
     });
 
-    logger.info('Email verified', { userId: credential.userId });
+    logger.info('Email verified', { userId: verificationToken.userId });
     return { verified: true };
   },
 
@@ -436,10 +517,23 @@ export const AuthService = {
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    await prisma.userCredential.update({
-      where: { userId: user.id },
+    // Invalidate any existing password reset tokens for this user
+    await prisma.verificationToken.updateMany({
+      where: {
+        userId: user.id,
+        type: TokenType.PASSWORD_RESET,
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+
+    // Create new reset token
+    await prisma.verificationToken.create({
       data: {
-        totpSecret: `pw_reset:${tokenHash}:${expiresAt.toISOString()}`,
+        userId: user.id,
+        tokenHash,
+        type: TokenType.PASSWORD_RESET,
+        expiresAt,
       },
     });
 
@@ -474,63 +568,66 @@ export const AuthService = {
    * Revokes all sessions for security.
    */
   async resetPassword(token: string, newPassword: string, meta?: { ip?: string; requestId?: string }) {
+    // Validate new password strength
+    if (!newPassword || newPassword.length < 8 || newPassword.length > 128) {
+      throw new AppError('Password must be between 8 and 128 characters', 'VALIDATION_ERROR', 400);
+    }
+
     const tokenHash = hashToken(token);
 
-    const credentials = await prisma.userCredential.findMany({
-      where: {
-        totpSecret: { startsWith: `pw_reset:${tokenHash}:` },
-      },
+    // Find valid token
+    const verificationToken = await prisma.verificationToken.findUnique({
+      where: { tokenHash },
     });
 
-    if (credentials.length === 0) {
+    if (!verificationToken || verificationToken.type !== TokenType.PASSWORD_RESET) {
       throw new AppError('Invalid or expired reset token', 'INVALID_TOKEN', 400);
     }
 
-    const credential = credentials[0];
-    const parts = credential.totpSecret?.split(':') ?? [];
-    const expiresAt = parts[2] ? new Date(parts[2]) : new Date(0);
+    if (verificationToken.usedAt) {
+      throw new AppError('Reset token already used', 'TOKEN_USED', 400);
+    }
 
-    if (expiresAt < new Date()) {
+    if (verificationToken.expiresAt < new Date()) {
       throw new AppError('Reset token expired', 'TOKEN_EXPIRED', 400);
     }
 
-    const passwordHash = await argon2.hash(newPassword, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4,
-    });
+    const passwordHash = await hashPassword(newPassword);
 
     await prisma.$transaction([
       prisma.userCredential.update({
-        where: { userId: credential.userId },
+        where: { userId: verificationToken.userId },
         data: {
           passwordHash,
-          totpSecret: null,
           failedAttempts: 0,
           lockedUntil: null,
           passwordChangedAt: new Date(),
         },
       }),
+      // Consume the token
+      prisma.verificationToken.update({
+        where: { id: verificationToken.id },
+        data: { usedAt: new Date() },
+      }),
       // Revoke all sessions for security
       prisma.session.updateMany({
-        where: { userId: credential.userId, revokedAt: null },
+        where: { userId: verificationToken.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       }),
     ]);
 
     await AuditService.log({
-      actorId: credential.userId,
+      actorId: verificationToken.userId,
       actorType: 'user',
       action: 'user.password_reset.complete',
       targetType: 'user',
-      targetId: credential.userId,
+      targetId: verificationToken.userId,
       ipAddress: meta?.ip,
       requestId: meta?.requestId,
     });
 
     logger.info('Password reset completed — all sessions revoked', {
-      userId: credential.userId,
+      userId: verificationToken.userId,
     });
 
     return { reset: true };

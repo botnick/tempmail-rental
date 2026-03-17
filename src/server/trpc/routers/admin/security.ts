@@ -38,7 +38,7 @@ export const adminSecurityRouter = router({
       return { data, total, page: input.page, pageSize: input.pageSize };
     }),
 
-  globalRevokeSessions: permissionProcedure(PERMISSIONS.ADMIN_SECURITY_REVOKE_SESSIONS)
+  globalRevokeSessions: permissionProcedure(PERMISSIONS.ADMIN_SECURITY_MANAGE)
     .input(z.object({ reason: z.string().min(10) }))
     .mutation(async ({ input, ctx }) => {
       const result = await ctx.prisma.session.updateMany({

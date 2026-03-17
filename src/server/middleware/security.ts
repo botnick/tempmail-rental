@@ -5,6 +5,7 @@
  */
 
 import { TRPCError } from '@trpc/server';
+import { env } from '../config/env';
 
 /**
  * Validate CSRF token from custom header
@@ -18,7 +19,7 @@ export function validateCsrfHeader(
   const csrfToken = headers['x-csrf-token'] as string | undefined;
 
   // In development, skip CSRF
-  if (process.env.NODE_ENV === 'development') return;
+  if (env.NODE_ENV === 'development') return;
 
   // For mutating requests, validate origin matches host
   if (origin && host) {
@@ -32,17 +33,7 @@ export function validateCsrfHeader(
   }
 }
 
-/**
- * Sanitize user input — prevent XSS in stored content
- */
-export function sanitizeInput(input: string): string {
-  return input
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
+
 
 /**
  * Extract client IP from headers (supports reverse proxy)

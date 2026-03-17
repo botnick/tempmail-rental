@@ -43,6 +43,8 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 function shouldLog(level: LogLevel): boolean {
+  // NOTE: Use process.env directly here to avoid circular dependency
+  // (env.ts may log errors during validation, which would require logger)
   const configuredLevel = (process.env.LOG_LEVEL as LogLevel) || 'info';
   return LOG_LEVELS[level] >= LOG_LEVELS[configuredLevel];
 }

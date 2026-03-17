@@ -35,6 +35,9 @@ export const ROUTES = {
   home: '/',
   login: '/login',
   register: '/register',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
+  verifyEmail: '/verify-email',
   pricing: '/pricing',
   dashboard: '/dashboard',
   mailboxes: '/dashboard/mailboxes',
@@ -128,7 +131,8 @@ export const TRUST_SIGNALS = [
 ];
 
 // ──────────────────────────────────────────────
-// PLANS
+// PLANS (DEPRECATED — now DB-driven via PlanService)
+// See: src/components/PricingPageContent.tsx
 // ──────────────────────────────────────────────
 export interface PlanItem {
   name: string;
@@ -192,7 +196,7 @@ export const USER_STATS: StatItem[] = [
 ];
 
 // ──────────────────────────────────────────────
-// FEATURE MATRIX
+// FEATURE MATRIX (DEPRECATED — now DB-driven via PricingPageContent)
 // ──────────────────────────────────────────────
 export const FEATURE_MATRIX = [
   { key: 'max_mailboxes', label: 'Max Mailboxes', free: '3', pro: '50', business: 'Unlimited' },
@@ -296,12 +300,9 @@ export const MAILBOX_STATUSES = [
 ];
 
 export const ROLE_OPTIONS = [
-  { value: 'SUPER_ADMIN', label: 'Super Admin' },
+  { value: 'SYSTEM_ADMIN', label: 'System Admin' },
   { value: 'ADMIN', label: 'Admin' },
-  { value: 'SUPPORT', label: 'Support' },
-  { value: 'USER_FREE', label: 'Free' },
-  { value: 'USER_PRO', label: 'Pro' },
-  { value: 'USER_BUSINESS', label: 'Business' },
+  { value: 'CUSTOMER', label: 'Customer' },
 ];
 
 export const RISK_SEVERITIES = [

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AuthService, registerSchema, loginSchema } from '@/server/services/auth.service';
+import { AuthService, registerSchema } from '@/server/services/auth.service';
+import { restRateLimit, rateLimitResponse } from '@/server/middleware/rest-rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
+    // ─── Rate limit: 3 attempts per 1 hour ───────────
+    const rl = await restRateLimit(req, 'auth.register');
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
+
     const body = await req.json();
     const parsed = registerSchema.safeParse(body);
 
@@ -30,12 +35,14 @@ export async function POST(req: NextRequest) {
       expiresAt: loginResult.expiresAt,
     });
 
+    // Session cookie — maxAge matches actual session TTL
+    const sessionMaxAge = Math.ceil((loginResult.expiresAt.getTime() - Date.now()) / 1000);
     response.cookies.set('session_token', loginResult.sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: sessionMaxAge,
     });
 
     response.cookies.set('refresh_token', loginResult.refreshToken, {
@@ -50,8 +57,16 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const error = err as { code?: string; statusCode?: number; message?: string };
     const status = error.statusCode ?? (error.code === 'CONFLICT_ERROR' ? 409 : 500);
+
+    // Sanitize: only return safe messages
+    const safeMessages: Record<string, string> = {
+      CONFLICT_ERROR: 'An account with this email already exists',
+      VALIDATION_ERROR: 'Invalid registration data',
+    };
+    const message = safeMessages[error.code ?? ''] ?? 'Registration failed';
+
     return NextResponse.json(
-      { error: error.message ?? 'Registration failed' },
+      { error: message },
       { status }
     );
   }

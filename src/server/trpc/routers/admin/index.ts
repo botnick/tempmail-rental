@@ -10,6 +10,8 @@ import { adminSeoRouter } from './seo';
 import { adminDomainRouter } from './domain';
 import { adminPlanRouter } from './plan';
 import { adminBillingRouter } from './billing';
+import { adminRbacRouter } from './rbac';
+import { supportNotesRouter } from './supportNotes';
 
 export const adminRouter = router({
   dashboard: adminDashboardRouter,
@@ -23,4 +25,7 @@ export const adminRouter = router({
   domain: adminDomainRouter,
   plan: adminPlanRouter,
   billing: adminBillingRouter,
+  rbac: adminRbacRouter,
+  supportNotes: supportNotesRouter,
 });
+

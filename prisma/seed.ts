@@ -1,11 +1,11 @@
-// prisma/seed.ts — Main seed orchestrator (v3)
-// Aligned with: MFA, step-up auth, approval workflow, quota service, 60+ permissions, 9 roles
+// prisma/seed.ts — Main seed orchestrator (v4)
+// Aligned with: 28 permissions, 3 roles (SYSTEM_ADMIN, ADMIN, CUSTOMER)
 
 import 'dotenv/config';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import argon2 from 'argon2';
+import { hashPassword } from '../src/server/auth/password';
 import {
   ROLES, PERMISSIONS, ROLE_PERMISSIONS, PLANS, USERS, DOMAINS,
   CONFIG_ENTRIES, FEATURE_FLAGS, EMAIL_TEMPLATES,
@@ -23,10 +23,10 @@ const prisma = new PrismaClient({ adapter });
 const PASSWORD = 'Tempmail@2026';
 
 async function hashPw(pw: string) {
-  return argon2.hash(pw, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4 });
+  return hashPassword(pw);
 }
 
-// ── 1. ROLES & PERMISSIONS (60+ granular permissions, 9 roles) ──
+// ── 1. ROLES & PERMISSIONS (28 permissions, 3 roles) ──
 async function seedRoles() {
   console.log('  → Roles & Permissions...');
   const roleMap = new Map<string, string>();
@@ -51,6 +51,21 @@ async function seedRoles() {
       });
     }
   }
+
+  // Cleanup: delete obsolete roles not in ROLES
+  const validRoleNames = ROLES.map(r => r.name);
+  const obsoleteRoles = await prisma.role.findMany({
+    where: { name: { notIn: validRoleNames } },
+    select: { id: true, name: true },
+  });
+  if (obsoleteRoles.length > 0) {
+    const obsoleteIds = obsoleteRoles.map(r => r.id);
+    await prisma.rolePermission.deleteMany({ where: { roleId: { in: obsoleteIds } } });
+    await prisma.userRole.deleteMany({ where: { roleId: { in: obsoleteIds } } });
+    await prisma.role.deleteMany({ where: { id: { in: obsoleteIds } } });
+    console.log(`    ⚠️ Removed obsolete roles: ${obsoleteRoles.map(r => r.name).join(', ')}`);
+  }
+
   console.log(`    ${roleMap.size} roles, ${permMap.size} permissions`);
   return roleMap;
 }
@@ -145,99 +160,7 @@ async function seedDomains(userMap: Map<string, string>) {
   return domainMap;
 }
 
-// ── 5. MAILBOXES + MESSAGES + ALIASES + EVENTS ──
-async function seedMailboxes(userMap: Map<string, string>, domainMap: Map<string, string>) {
-  console.log('  → Mailboxes, Messages, Aliases, Events...');
-  const sysDomains = ['tempmail.dev', 'quickmail.cc', 'dropbox.email'];
-  const activeUsers = USERS.filter(u => u.status === 'ACTIVE');
-  const otpSvcs = ['Shopee', 'Lazada', 'LINE', 'Twitter', 'Discord', 'GitHub', 'Netflix', 'Grab', 'TrueID', 'Agoda'];
-  const pubs = ['Tech Weekly TH', 'Dev Digest', 'Product Hunt', 'Bangkok Post', 'Blognone'];
-  let mbCount = 0, msgCount = 0, aliasCount = 0;
-
-  for (const u of activeUsers) {
-    const userId = userMap.get(u.email)!;
-    const n = u.plan === 'free' ? Math.min(3, Math.floor(Math.random() * 3) + 1)
-      : u.plan === 'enterprise' ? Math.floor(Math.random() * 12) + 5
-      : u.plan === 'starter' ? Math.floor(Math.random() * 5) + 2
-      : Math.floor(Math.random() * 8) + 3;
-
-    for (let i = 0; i < n; i++) {
-      const dn = sysDomains[Math.floor(Math.random() * sysDomains.length)];
-      const uname = `${u.displayName.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || 'user'}.${Math.random().toString(36).slice(2, 6)}`;
-      const address = `${uname}@${dn}`;
-      const expired = Math.random() < 0.15;
-      const hrsAgo = Math.floor(Math.random() * 72) + 1;
-
-      try {
-        const mb = await prisma.mailbox.create({
-          data: {
-            userId, address, domainId: domainMap.get(dn)!,
-            status: expired ? 'EXPIRED' : 'ACTIVE',
-            riskScore: Math.random() < 0.1 ? Math.floor(Math.random() * 30) + 10 : 0,
-            expiresAt: expired ? hoursAgo(Math.floor(Math.random() * 12)) : daysFromNow(u.plan === 'free' ? 1 : u.plan === 'enterprise' ? 365 : 7),
-            createdAt: hoursAgo(hrsAgo),
-          },
-        });
-
-        // Events
-        await prisma.mailboxEvent.create({ data: { mailboxId: mb.id, type: 'created', createdAt: hoursAgo(hrsAgo), metadata: { address } } });
-        if (expired) await prisma.mailboxEvent.create({ data: { mailboxId: mb.id, type: 'expired', createdAt: hoursAgo(Math.floor(Math.random() * 6)) } });
-
-        // Aliases (pro+ users)
-        if (['pro', 'enterprise'].includes(u.plan) && Math.random() < 0.3) {
-          const aliasAddr = `alias.${Math.random().toString(36).slice(2,6)}@${dn}`;
-          try {
-            await prisma.mailboxAlias.create({ data: { mailboxId: mb.id, alias: aliasAddr } });
-            aliasCount++;
-          } catch {}
-        }
-
-        // Messages
-        const nMsg = Math.floor(Math.random() * 8) + 1;
-        for (let m = 0; m < nMsg; m++) {
-          const r = Math.random();
-          const em = r < 0.30 ? EMAIL_TEMPLATES.otp(String(Math.floor(100000 + Math.random() * 900000)), otpSvcs[Math.floor(Math.random() * otpSvcs.length)])
-            : r < 0.45 ? EMAIL_TEMPLATES.welcome(u.displayName.split(' ')[0], otpSvcs[Math.floor(Math.random() * otpSvcs.length)])
-            : r < 0.60 ? EMAIL_TEMPLATES.newsletter(`${pubs[Math.floor(Math.random() * pubs.length)]}: Weekly #${Math.floor(Math.random() * 100) + 1}`, pubs[Math.floor(Math.random() * pubs.length)])
-            : r < 0.75 ? EMAIL_TEMPLATES.shipping(String(Math.floor(10000000 + Math.random() * 90000000)))
-            : r < 0.85 ? EMAIL_TEMPLATES.security_alert(`${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`)
-            : r < 0.93 ? EMAIL_TEMPLATES.mfa_enabled(u.displayName.split(' ')[0])
-            : EMAIL_TEMPLATES.password_reset(u.displayName.split(' ')[0]);
-
-          const msg = await prisma.mailboxMessage.create({
-            data: {
-              mailboxId: mb.id, fromAddress: em.from, subject: em.subject,
-              bodyText: em.bodyText, bodyHtml: em.bodyHtml,
-              size: (em.bodyHtml?.length ?? 0) + em.bodyText.length,
-              isRead: Math.random() < 0.6,
-              receivedAt: hoursAgo(Math.floor(Math.random() * hrsAgo)),
-            },
-          });
-          msgCount++;
-
-          if (Math.random() < 0.12) {
-            await prisma.mailboxAttachment.create({
-              data: {
-                messageId: msg.id,
-                filename: ['invoice.pdf', 'receipt.pdf', 'photo.jpg', 'screenshot.png', 'document.pdf'][Math.floor(Math.random() * 5)],
-                contentType: Math.random() < 0.6 ? 'application/pdf' : 'image/jpeg',
-                size: Math.floor(Math.random() * 2000000) + 50000,
-                storageKey: `attachments/${msg.id}/${Math.random().toString(36).slice(2)}`,
-                scanStatus: Math.random() < 0.9 ? 'clean' : 'pending',
-              },
-            });
-          }
-        }
-
-        await prisma.mailbox.update({ where: { id: mb.id }, data: { messageCount: nMsg } });
-        mbCount++;
-      } catch { /* address collision — skip */ }
-    }
-  }
-  console.log(`    ${mbCount} mailboxes, ${msgCount} messages, ${aliasCount} aliases`);
-}
-
-// ── 6. BILLING (Topups, Invoices, Debits, Adjustments, Ledger) ──
+// ── 5. BILLING (Topups, Invoices, Debits, Adjustments, Ledger) ──
 async function seedBilling(userMap: Map<string, string>) {
   console.log('  → Billing (topups, invoices, debits, adjustments)...');
   const paidUsers = USERS.filter(u => u.plan !== 'free' && u.status === 'ACTIVE');
@@ -507,14 +430,13 @@ async function seedCMS(userMap: Map<string, string>) {
 
 // ── MAIN ──
 async function main() {
-  console.log('🌱 Seeding TempMail database (v3)...\n');
+  console.log('🌱 Seeding TempMail database (v4)...\n');
   const t0 = Date.now();
 
   const roleMap = await seedRoles();
   const planMap = await seedPlans();
   const userMap = await seedUsers(roleMap, planMap);
-  const domainMap = await seedDomains(userMap);
-  await seedMailboxes(userMap, domainMap);
+  await seedDomains(userMap);
   await seedBilling(userMap);
   await seedConfig();
   await seedSecurity(userMap);
@@ -524,14 +446,14 @@ async function main() {
   console.log(`\n✅ Seed complete in ${sec}s`);
   console.log(`\n📧 Login credentials (all users):`);
   console.log(`   Password: ${PASSWORD}`);
-  console.log(`   Admin:      admin@tempmail.dev  (SUPER_ADMIN, MFA enabled)`);
+  console.log(`   Admin:      admin@tempmail.dev  (SYSTEM_ADMIN, MFA enabled)`);
   console.log(`   Ops:        ops@tempmail.dev    (ADMIN, MFA enabled)`);
-  console.log(`   Support:    support@tempmail.dev`);
-  console.log(`   Finance:    finance@tempmail.dev (MFA enabled)`);
-  console.log(`   Security:   security@tempmail.dev (MFA enabled)`);
-  console.log(`   Pro User:   somchai.dev@gmail.com (MFA enabled)`);
-  console.log(`   Business:   enterprise@bigcorp.co.th (MFA enabled)`);
-  console.log(`   Free User:  tanawat.p@gmail.com\n`);
+  console.log(`   Support:    support@tempmail.dev (ADMIN)`);
+  console.log(`   Finance:    finance@tempmail.dev (ADMIN, MFA enabled)`);
+  console.log(`   Security:   security@tempmail.dev (ADMIN, MFA enabled)`);
+  console.log(`   Customer:   somchai.dev@gmail.com (CUSTOMER, MFA enabled)`);
+  console.log(`   Customer:   enterprise@bigcorp.co.th (CUSTOMER, MFA enabled)`);
+  console.log(`   Customer:   tanawat.p@gmail.com (CUSTOMER)\n`);
 }
 
 main()

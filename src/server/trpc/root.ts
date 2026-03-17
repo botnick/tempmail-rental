@@ -7,6 +7,10 @@ import { planRouter } from './routers/plan';
 import { healthRouter } from './routers/health';
 import { adminRouter } from './routers/admin';
 import { contentRouter } from './routers/content';
+import { tempmailRouter } from './routers/tempmail';
+import { aliasRouter } from './routers/alias';
+import { notificationRouter } from './routers/notification';
+import { apiKeyRouter } from './routers/apiKey';
 
 export const appRouter = router({
   auth: authRouter,
@@ -17,6 +21,11 @@ export const appRouter = router({
   health: healthRouter,
   admin: adminRouter,
   content: contentRouter,
+  tempmail: tempmailRouter,
+  alias: aliasRouter,
+  notification: notificationRouter,
+  apiKey: apiKeyRouter,
 });
 
 export type AppRouter = typeof appRouter;
+

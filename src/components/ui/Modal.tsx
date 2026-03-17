@@ -47,8 +47,8 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
       <div
         className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden animate-fade-in-up`}
         style={{
-          background: 'linear-gradient(170deg, rgba(32,26,22,0.99) 0%, rgba(18,14,12,0.99) 100%)',
-          boxShadow: '0 0 0 1px rgba(249,115,22,0.06), 0 0 40px -8px rgba(249,115,22,0.08), 0 32px 80px -16px rgba(0,0,0,0.8)',
+          background: 'linear-gradient(170deg, #201a16 0%, #120e0c 100%)',
+          boxShadow: '0 0 0 1px rgba(249,115,22,0.08), 0 0 40px -8px rgba(249,115,22,0.1), 0 32px 80px -16px rgba(0,0,0,0.85)',
         }}
       >
         {/* Top accent line */}

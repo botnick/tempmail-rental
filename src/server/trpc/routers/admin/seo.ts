@@ -84,7 +84,7 @@ export const adminSeoRouter = router({
 
   // ─── CONTENT PAGES ──────────────────────────
 
-  listPages: permissionProcedure(PERMISSIONS.ADMIN_SEO_PAGE_LIST)
+  listPages: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       locale: localeSchema.optional(),
       status: z.string().optional(),
@@ -110,7 +110,7 @@ export const adminSeoRouter = router({
       return { items, total };
     }),
 
-  createPage: permissionProcedure(PERMISSIONS.ADMIN_SEO_PAGE_CREATE)
+  createPage: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(pageCreateSchema)
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -154,7 +154,7 @@ export const adminSeoRouter = router({
       return page;
     }),
 
-  updatePage: permissionProcedure(PERMISSIONS.ADMIN_SEO_PAGE_EDIT)
+  updatePage: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(pageUpdateSchema)
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -184,7 +184,7 @@ export const adminSeoRouter = router({
       return page;
     }),
 
-  publishPage: permissionProcedure(PERMISSIONS.ADMIN_SEO_PAGE_PUBLISH)
+  publishPage: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -239,7 +239,7 @@ export const adminSeoRouter = router({
       return updated;
     }),
 
-  archivePage: permissionProcedure(PERMISSIONS.ADMIN_SEO_PAGE_EDIT)
+  archivePage: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({ id: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -264,7 +264,7 @@ export const adminSeoRouter = router({
 
   // ─── FAQ ITEMS ──────────────────────────────
 
-  listFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_FAQ_MANAGE)
+  listFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       locale: localeSchema.optional(),
       category: z.string().optional(),
@@ -280,7 +280,7 @@ export const adminSeoRouter = router({
       });
     }),
 
-  createFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_FAQ_MANAGE)
+  createFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(faqCreateSchema)
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -300,7 +300,7 @@ export const adminSeoRouter = router({
       return faq;
     }),
 
-  updateFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_FAQ_MANAGE)
+  updateFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       id: z.string(),
       question: z.string().min(10).max(500).optional(),
@@ -328,7 +328,7 @@ export const adminSeoRouter = router({
       return faq;
     }),
 
-  deleteFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_FAQ_MANAGE)
+  deleteFaq: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({ id: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -350,7 +350,7 @@ export const adminSeoRouter = router({
 
   // ─── REDIRECTS ──────────────────────────────
 
-  listRedirects: permissionProcedure(PERMISSIONS.ADMIN_SEO_REDIRECT_MANAGE)
+  listRedirects: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       take: z.number().int().min(1).max(100).default(50),
     }))
@@ -362,7 +362,7 @@ export const adminSeoRouter = router({
       });
     }),
 
-  createRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_REDIRECT_MANAGE)
+  createRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(redirectCreateSchema)
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -392,7 +392,7 @@ export const adminSeoRouter = router({
       return redirect;
     }),
 
-  deleteRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_REDIRECT_MANAGE)
+  deleteRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({ id: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -414,7 +414,7 @@ export const adminSeoRouter = router({
       return { success: true };
     }),
 
-  updateRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_REDIRECT_MANAGE)
+  updateRedirect: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       id: z.string(),
       sourcePath: z.string().min(1).max(500).regex(/^\//).optional(),
@@ -445,7 +445,7 @@ export const adminSeoRouter = router({
 
   // ─── ANSWER BLOCKS ──────────────────────────
 
-  listAnswers: permissionProcedure(PERMISSIONS.ADMIN_SEO_ANSWER_MANAGE)
+  listAnswers: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       locale: localeSchema.optional(),
       status: z.string().optional(),
@@ -461,7 +461,7 @@ export const adminSeoRouter = router({
       });
     }),
 
-  createAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_ANSWER_MANAGE)
+  createAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(answerCreateSchema)
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;
@@ -486,7 +486,7 @@ export const adminSeoRouter = router({
       return answer;
     }),
 
-  updateAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_ANSWER_MANAGE)
+  updateAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       id: z.string(),
       question: z.string().min(10).max(500).optional(),
@@ -522,7 +522,7 @@ export const adminSeoRouter = router({
       return answer;
     }),
 
-  deleteAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_ANSWER_MANAGE)
+  deleteAnswer: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({ id: z.string(), reason: z.string().min(5) }))
     .mutation(async ({ input, ctx }) => {
       const actor = ctx.actor!;

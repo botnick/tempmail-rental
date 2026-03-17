@@ -76,7 +76,7 @@ export function createSecurityService(db: PrismaClient) {
       return db.user.updateMany({
         where: {
           status: UserStatus.ACTIVE,
-          userRoles: { none: { role: { name: { in: ['SUPER_ADMIN', 'ADMIN'] } } } },
+          userRoles: { none: { role: { name: { in: ['SYSTEM_ADMIN', 'ADMIN'] } } } },
         },
         data: { status: UserStatus.SUSPENDED },
       });

@@ -5,7 +5,7 @@ import { PERMISSIONS } from '../../../policy';
 import { AuditService } from '../../../services/audit.service';
 
 export const adminFeatureFlagRouter = router({
-  list: permissionProcedure(PERMISSIONS.ADMIN_FF_LIST)
+  list: permissionProcedure(PERMISSIONS.ADMIN_FF_MANAGE)
     .input(z.object({
       page: z.number().int().min(1).default(1),
       pageSize: z.number().int().min(1).max(100).default(50),
@@ -34,7 +34,7 @@ export const adminFeatureFlagRouter = router({
       return { data, total, page: input.page, pageSize: input.pageSize };
     }),
 
-  create: permissionProcedure(PERMISSIONS.ADMIN_FF_CREATE)
+  create: permissionProcedure(PERMISSIONS.ADMIN_FF_MANAGE)
     .input(z.object({
       key: z.string().min(2).max(100).regex(/^[a-z0-9._-]+$/),
       name: z.string().min(2).max(200),
@@ -66,9 +66,11 @@ export const adminFeatureFlagRouter = router({
       return flag;
     }),
 
-  update: permissionProcedure(PERMISSIONS.ADMIN_FF_EDIT)
+  update: permissionProcedure(PERMISSIONS.ADMIN_FF_MANAGE)
     .input(z.object({
       id: z.string(),
+      name: z.string().min(2).max(200).optional(),
+      description: z.string().optional(),
       enabled: z.boolean().optional(),
       rolloutPct: z.number().int().min(0).max(100).optional(),
       targetRoles: z.array(z.string()).optional(),
@@ -98,4 +100,70 @@ export const adminFeatureFlagRouter = router({
 
       return flag;
     }),
+
+  delete: permissionProcedure(PERMISSIONS.ADMIN_FF_MANAGE)
+    .input(z.object({ id: z.string(), reason: z.string().min(5) }))
+    .mutation(async ({ input, ctx }) => {
+      const flag = await ctx.prisma.featureFlag.findUnique({ where: { id: input.id } });
+      if (!flag) throw new Error('Feature flag not found');
+
+      await ctx.prisma.featureFlag.delete({ where: { id: input.id } });
+
+      await AuditService.logAdminAction({
+        adminId: ctx.actor!.userId,
+        action: 'admin.feature_flag.delete',
+        targetType: 'feature_flag',
+        targetId: input.id,
+        reason: input.reason,
+        metadata: { deletedFlag: flag },
+        requestId: ctx.requestId,
+      });
+
+      return { success: true };
+    }),
+
+  /** Returns available plans, roles, users, feature keys, and currencies for auto-suggestions */
+  listOptions: permissionProcedure(PERMISSIONS.ADMIN_FF_MANAGE)
+    .query(async ({ ctx }) => {
+      const [plans, roles, users, dbFeatureKeys, dbCurrencies] = await Promise.all([
+        ctx.prisma.plan.findMany({
+          where: { status: 'ACTIVE' },
+          select: { slug: true, name: true },
+          orderBy: { sortOrder: 'asc' },
+        }),
+        ctx.prisma.role.findMany({
+          select: { name: true, displayName: true },
+          orderBy: { name: 'asc' },
+        }),
+        ctx.prisma.user.findMany({
+          select: { id: true, email: true, displayName: true },
+          orderBy: { email: 'asc' },
+          take: 200,
+        }),
+        // Distinct feature keys from DB — labels come from frontend dictionaries
+        ctx.prisma.planFeature.findMany({
+          select: { featureKey: true, valueType: true },
+          distinct: ['featureKey'],
+          orderBy: { featureKey: 'asc' },
+        }),
+        // Distinct currencies from DB
+        ctx.prisma.planPricing.findMany({
+          select: { currency: true },
+          distinct: ['currency'],
+          orderBy: { currency: 'asc' },
+        }),
+      ]);
+
+      // Raw feature keys — just key + valueType from DB, no hardcoded labels
+      const featureKeys = dbFeatureKeys.map((fk) => ({
+        key: fk.featureKey,
+        valueType: fk.valueType || 'number',
+      }));
+
+      // Raw currencies from DB
+      const currencies = dbCurrencies.map((c) => c.currency);
+
+      return { plans, roles, users, featureKeys, currencies };
+    }),
 });
+

@@ -7,7 +7,7 @@ import { NotFoundError } from '../../../lib/errors';
 import { UserStatus, SubscriptionStatus } from '@prisma/client';
 
 export const adminUserRouter = router({
-  list: permissionProcedure(PERMISSIONS.ADMIN_USER_LIST)
+  list: permissionProcedure(PERMISSIONS.ADMIN_USER_VIEW)
     .input(z.object({
       page: z.number().int().min(1).default(1),
       pageSize: z.number().int().min(1).max(100).default(20),
@@ -117,7 +117,7 @@ export const adminUserRouter = router({
       };
     }),
 
-  suspend: permissionProcedure(PERMISSIONS.ADMIN_USER_SUSPEND)
+  suspend: permissionProcedure(PERMISSIONS.ADMIN_USER_MANAGE)
     .input(z.object({
       userId: z.string(),
       reason: z.string().min(5, 'Reason required for destructive actions'),
@@ -153,7 +153,7 @@ export const adminUserRouter = router({
       return { success: true };
     }),
 
-  unsuspend: permissionProcedure(PERMISSIONS.ADMIN_USER_SUSPEND)
+  unsuspend: permissionProcedure(PERMISSIONS.ADMIN_USER_MANAGE)
     .input(z.object({
       userId: z.string(),
       reason: z.string().min(5),
@@ -179,7 +179,7 @@ export const adminUserRouter = router({
       return { success: true };
     }),
 
-  assignRole: permissionProcedure(PERMISSIONS.ADMIN_USER_ASSIGN_ROLE)
+  assignRole: permissionProcedure(PERMISSIONS.ADMIN_USER_MANAGE)
     .input(z.object({
       userId: z.string(),
       roleName: z.string(),
@@ -215,7 +215,7 @@ export const adminUserRouter = router({
       return { success: true };
     }),
 
-  grantCredits: permissionProcedure(PERMISSIONS.ADMIN_USER_GRANT_CREDITS)
+  grantCredits: permissionProcedure(PERMISSIONS.ADMIN_USER_MANAGE)
     .input(z.object({
       userId: z.string(),
       amount: z.number().positive(),
@@ -249,7 +249,7 @@ export const adminUserRouter = router({
       return { success: true };
     }),
 
-  forceLogout: permissionProcedure(PERMISSIONS.ADMIN_USER_SUSPEND)
+  forceLogout: permissionProcedure(PERMISSIONS.ADMIN_USER_MANAGE)
     .input(z.object({
       userId: z.string(),
       reason: z.string().min(5),

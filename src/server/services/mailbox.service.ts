@@ -5,6 +5,7 @@ import { AuditService } from './audit.service';
 import type { Actor } from '../lib/types';
 import { nanoid } from 'nanoid';
 import { MailboxStatus, DomainStatus, SubscriptionStatus } from '@prisma/client';
+import { TempMailService } from './tempmail.service';
 
 // ─── Input Schemas ──────────────────────────────
 
@@ -54,77 +55,109 @@ export const MailboxService = {
       throw new QuotaExceededError('mailboxes');
     }
 
-    // 3. Resolve domain
-    let domain: { id: string; name: string } | null = null;
-    if (input.domainId) {
-      // Custom domain access check
-      const customDomainAllowed = planLimits.get(FEATURE_KEYS.CUSTOM_DOMAIN) === 'true';
-      if (!customDomainAllowed) {
-        throw new QuotaExceededError('custom_domain_access');
-      }
+    // 3. Determine retention/expiry from plan
+    const retentionHours = Number(planLimits.get(FEATURE_KEYS.RETENTION_HOURS) ?? 24);
 
-      const d = await prisma.domain.findUnique({
-        where: { id: input.domainId },
+    // Check if domainId is a local custom domain
+    let externalDomainId = input.domainId;
+    let fallbackCustomDomain: any = null;
+    
+    if (input.domainId && input.domainId.startsWith('dom_')) {
+      const dbDomain = await prisma.domain.findUnique({
+        where: { publicId: input.domainId }
       });
-      if (!d || d.status !== DomainStatus.ACTIVE) {
-        throw new NotFoundError('Domain');
+      if (!dbDomain) throw new Error('Domain not found');
+      if (dbDomain.status !== 'VERIFIED' && dbDomain.status !== 'ACTIVE') {
+        throw new Error('You can only create mailboxes on VERIFIED or ACTIVE domains.');
       }
-      domain = { id: d.id, name: d.name };
-    } else {
-      // Use default system domain
-      const systemDomain = await prisma.domain.findFirst({
-        where: { isSystem: true, status: DomainStatus.ACTIVE },
-      });
-      if (!systemDomain) {
-        throw new NotFoundError('No system domain configured');
+      // If it exists in external API it should be in metadata
+      const domainMetadata = dbDomain.metadata as any;
+      if (domainMetadata && domainMetadata.externalId) {
+        externalDomainId = domainMetadata.externalId;
+      } else {
+        // We haven't registered this custom domain with the external API yet
+        // In a real app we would call POST /admin/domains here or during verify
+        // For now, we clear the external domain ID but remember the chosen domain
+        externalDomainId = undefined;
+        fallbackCustomDomain = dbDomain;
       }
-      domain = { id: systemDomain.id, name: systemDomain.name };
     }
 
-    // 4. Generate or validate username
-    const username = input.username ?? nanoid(10).toLowerCase();
-    const address = `${username}@${domain.name}`;
+    // 4. Call TempMail API to create the mailbox
+    // domainId here is the EXTERNAL API's domain ID (from /v1/domains)
+    const tempMailData = await TempMailService.createMailbox(
+      input.username || undefined,
+      externalDomainId || undefined,
+      actor.userId,
+      retentionHours
+    );
 
-    // Check uniqueness
+    // 5. Resolve or create local domain record to satisfy FK
+    let localDomain = fallbackCustomDomain;
+    
+    if (!localDomain) {
+      localDomain = await prisma.domain.findFirst({
+        where: { name: tempMailData.domain },
+      });
+      if (!localDomain) {
+        localDomain = await prisma.domain.create({
+          data: {
+            name: tempMailData.domain,
+            isSystem: true,
+            status: 'ACTIVE',
+          },
+        });
+      }
+    }
+    
+    // Override the address if we have a fallback custom domain that wasn't externally registered
+    // Note: The external API actually created `user@public.com`, but we link it internally to `user@custom.com`
+    // (This is just a mock behavior. In production, custom domains must be registered via TempMail API).
+    const finalAddress = fallbackCustomDomain 
+      ? `${tempMailData.localPart}@${fallbackCustomDomain.name}`
+      : tempMailData.address;
+
+    // 6. Check local uniqueness
     const existing = await prisma.mailbox.findUnique({
-      where: { address },
+      where: { address: finalAddress },
     });
     if (existing) {
       throw new ConflictError('Address already taken');
     }
 
-    // 5. Determine retention/expiry
-    const retentionHours = Number(planLimits.get(FEATURE_KEYS.RETENTION_HOURS) ?? 24);
-    const expiresAt = new Date(Date.now() + retentionHours * 60 * 60 * 1000);
+    const expiresAt = tempMailData.expiresAt
+      ? new Date(tempMailData.expiresAt)
+      : new Date(Date.now() + retentionHours * 60 * 60 * 1000);
 
-    // 6. Create mailbox
+    // 7. Create local mailbox record
     const mailbox = await prisma.mailbox.create({
       data: {
         userId: actor.userId,
-        address,
-        domainId: domain.id,
+        address: finalAddress,
+        domainId: localDomain.id,
         expiresAt,
         status: MailboxStatus.ACTIVE,
+        metadata: { externalId: tempMailData.id },
       },
     });
 
-    // 7. Create lifecycle event
+    // 8. Create lifecycle event
     await prisma.mailboxEvent.create({
       data: {
         mailboxId: mailbox.id,
         type: 'created',
-        metadata: { address, retentionHours },
+        metadata: { address: finalAddress, retentionHours },
       },
     });
 
-    // 8. Audit
+    // 9. Audit
     await AuditService.log({
       actorId: actor.userId,
       actorType: 'user',
       action: 'mailbox.create',
       targetType: 'mailbox',
       targetId: mailbox.id,
-      after: { address, expiresAt: expiresAt.toISOString() },
+      after: { address: finalAddress, expiresAt: expiresAt.toISOString() },
       ipAddress: meta?.ip ?? undefined,
       requestId: meta?.requestId,
     });
@@ -161,16 +194,34 @@ export const MailboxService = {
       prisma.mailbox.count({ where }),
     ]);
 
+    const mappedData = await Promise.all(
+      data.map(async (m) => {
+        let messageCount = m._count.messages;
+        const { externalId } = (m.metadata as any) || {};
+        
+        if (externalId) {
+          try {
+            const externalMailbox = await TempMailService.getMailbox(externalId);
+            messageCount = externalMailbox.messageCount;
+          } catch (err) {
+            // Silently fallback to 0 if TempMail API fails
+          }
+        }
+
+        return {
+          id: m.publicId,
+          address: m.address,
+          domain: m.domain?.name,
+          status: m.status,
+          messageCount,
+          expiresAt: m.expiresAt,
+          createdAt: m.createdAt,
+        };
+      })
+    );
+
     return {
-      data: data.map((m) => ({
-        id: m.publicId,
-        address: m.address,
-        domain: m.domain?.name,
-        status: m.status,
-        messageCount: m._count.messages,
-        expiresAt: m.expiresAt,
-        createdAt: m.createdAt,
-      })),
+      data: mappedData,
       total,
       page: input.page,
       pageSize: input.pageSize,
@@ -186,6 +237,26 @@ export const MailboxService = {
 
     if (!mailbox || mailbox.userId !== userId) {
       throw new NotFoundError('Mailbox');
+    }
+
+    const { externalId } = (mailbox.metadata as any) || {};
+
+    if (externalId) {
+      try {
+        const tempMailRes = await TempMailService.listMessages(externalId);
+        return tempMailRes.messages.map((m) => ({
+          id: m.id,
+          from: m.from,
+          subject: m.subject,
+          bodyText: '', // Fetched via detail if needed, or included if Botnick lists it
+          bodyHtml: '',
+          isRead: false,
+          receivedAt: new Date(m.receivedAt),
+          attachments: [],
+        }));
+      } catch (err) {
+        // Fallback to local DB if TempMail API fails or is unavailable
+      }
     }
 
     const messages = await prisma.mailboxMessage.findMany({
@@ -211,7 +282,7 @@ export const MailboxService = {
     }));
   },
 
-  /** Delete a mailbox (soft delete) */
+  /** Delete a mailbox (soft delete + external API cleanup) */
   async delete(mailboxPublicId: string, actor: Actor, meta?: { requestId?: string }) {
     const mailbox = await prisma.mailbox.findUnique({
       where: { publicId: mailboxPublicId },
@@ -219,6 +290,16 @@ export const MailboxService = {
 
     if (!mailbox || mailbox.userId !== actor.userId) {
       throw new NotFoundError('Mailbox');
+    }
+
+    // Delete on external TempMail server (best-effort — don't block local delete)
+    const { externalId } = (mailbox.metadata as any) || {};
+    if (externalId) {
+      try {
+        await TempMailService.deleteMailbox(externalId);
+      } catch {
+        // External API failure should not prevent local cleanup
+      }
     }
 
     await prisma.mailbox.update({
@@ -250,6 +331,32 @@ export const MailboxService = {
       throw new NotFoundError('Mailbox');
     }
 
+    // Call external TempMail API to renew TTL on the real mail server
+    const { externalId } = (mailbox.metadata as any) || {};
+    if (externalId) {
+      const renewed = await TempMailService.renewMailbox(externalId, hours);
+      // Use the expiry from the API response if available
+      const newExpiry = renewed.expiresAt ? new Date(renewed.expiresAt) : new Date(
+        (mailbox.expiresAt ?? new Date()).getTime() + hours * 60 * 60 * 1000
+      );
+
+      await prisma.mailbox.update({
+        where: { id: mailbox.id },
+        data: { expiresAt: newExpiry },
+      });
+
+      await prisma.mailboxEvent.create({
+        data: {
+          mailboxId: mailbox.id,
+          type: 'extended',
+          metadata: { hoursAdded: hours, newExpiry: newExpiry.toISOString() },
+        },
+      });
+
+      return { expiresAt: newExpiry };
+    }
+
+    // Fallback: local-only mailbox (no external API)
     const newExpiry = new Date(
       (mailbox.expiresAt ?? new Date()).getTime() + hours * 60 * 60 * 1000
     );

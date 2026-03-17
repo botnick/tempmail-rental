@@ -16,6 +16,7 @@ const ALLOWED_KEY_PREFIXES = [
   'page.',
   'faq.',
   'glossary.',
+  'tempmail.',
 ];
 
 const MAX_VALUE_LENGTH = 50_000; // 50KB max per config value
@@ -25,7 +26,7 @@ function isAllowedKey(key: string): boolean {
 }
 
 export const adminCmsRouter = router({
-  listContent: permissionProcedure(PERMISSIONS.ADMIN_CMS_LIST)
+  listContent: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       page: z.number().int().min(1).default(1),
       pageSize: z.number().int().min(1).max(100).default(20),
@@ -58,7 +59,7 @@ export const adminCmsRouter = router({
       };
     }),
 
-  updateContent: permissionProcedure(PERMISSIONS.ADMIN_CMS_EDIT)
+  updateContent: permissionProcedure(PERMISSIONS.ADMIN_SEO_MANAGE)
     .input(z.object({
       key: z.string()
         .min(3, 'Key must be at least 3 characters')

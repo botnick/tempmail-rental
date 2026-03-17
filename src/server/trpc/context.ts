@@ -5,6 +5,24 @@ import { hashToken } from '../lib/crypto';
 import { resolveUserPermissions, resolveUserRoles } from '../policy/rbac';
 import type { Actor } from '../lib/types';
 
+// Throttle lastActiveAt updates — at most once per 60s per session
+const lastActiveMap = new Map<string, number>();
+const LAST_ACTIVE_THROTTLE_MS = 60_000;
+const LAST_ACTIVE_CLEANUP_MS = 5 * 60_000; // cleanup every 5 min
+const LAST_ACTIVE_STALE_MS = 10 * 60_000;  // entries older than 10 min
+
+// Periodic cleanup to prevent memory leak from expired sessions
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, ts] of lastActiveMap) {
+      if (now - ts > LAST_ACTIVE_STALE_MS) {
+        lastActiveMap.delete(key);
+      }
+    }
+  }, LAST_ACTIVE_CLEANUP_MS).unref();
+}
+
 export interface TRPCContext {
   prisma: typeof prisma;
   requestId: string;
@@ -82,13 +100,17 @@ export async function createContext(
         planSlug: dbSession.user.subscriptions[0]?.plan.slug ?? null,
       };
 
-      // Update last active (fire-and-forget)
-      prisma.session
-        .update({
-          where: { id: dbSession.id },
-          data: { lastActiveAt: new Date() },
-        })
-        .catch(() => {});
+      // Throttled lastActiveAt update — once per 60s per session
+      const lastUpdate = lastActiveMap.get(dbSession.id) ?? 0;
+      if (Date.now() - lastUpdate > LAST_ACTIVE_THROTTLE_MS) {
+        lastActiveMap.set(dbSession.id, Date.now());
+        prisma.session
+          .update({
+            where: { id: dbSession.id },
+            data: { lastActiveAt: new Date() },
+          })
+          .catch(() => {});
+      }
     }
   }
 

@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import { router, protectedProcedure } from '../trpc';
-import { DomainService, createDomainSchema, verifyDomainSchema } from '../../services/domain.service';
+import { DomainService, createDomainSchema, verifyDomainSchema, checkDnsSchema } from '../../services/domain.service';
 
 export const domainRouter = router({
   create: protectedProcedure
@@ -20,4 +21,19 @@ export const domainRouter = router({
     .mutation(async ({ input, ctx }) => {
       return DomainService.verify(input.domainId, ctx.actor);
     }),
+
+  checkDns: protectedProcedure
+    .input(checkDnsSchema)
+    .query(async ({ input, ctx }) => {
+      return DomainService.checkDns(input.domainId, ctx.actor);
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ domainId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      return DomainService.delete(input.domainId, ctx.actor, {
+        requestId: ctx.requestId,
+      });
+    }),
 });
+

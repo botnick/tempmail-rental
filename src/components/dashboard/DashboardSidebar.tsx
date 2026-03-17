@@ -8,8 +8,9 @@ import {
   LayoutDashboard, Mail, Globe, CreditCard, Settings,
   ShieldCheck, LogOut, ChevronRight,
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
-const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'SUPPORT', 'FINANCE', 'SECURITY_AUDITOR'];
+const ADMIN_ROLES = ['SYSTEM_ADMIN', 'ADMIN'];
 
 interface DashboardSidebarProps {
   locale: string;
@@ -123,6 +124,9 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
             <p className="text-[10px] text-text-muted truncate">{(me.data as any).email}</p>
           </div>
         )}
+        <div className="px-3 py-1">
+          <ThemeToggle />
+        </div>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-text-muted/60 hover:text-danger hover:bg-danger/5 transition-all duration-200 w-full cursor-pointer"

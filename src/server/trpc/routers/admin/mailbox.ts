@@ -7,7 +7,7 @@ import { NotFoundError } from '../../../lib/errors';
 import { MailboxStatus } from '@prisma/client';
 
 export const adminMailboxRouter = router({
-  list: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_LIST)
+  list: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_VIEW)
     .input(z.object({
       page: z.number().int().min(1).default(1),
       pageSize: z.number().int().min(1).max(100).default(20),
@@ -56,7 +56,7 @@ export const adminMailboxRouter = router({
       };
     }),
 
-  quarantine: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_QUARANTINE)
+  quarantine: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_MANAGE)
     .input(z.object({
       mailboxId: z.string(),
       reason: z.string().min(5),
@@ -82,7 +82,7 @@ export const adminMailboxRouter = router({
       return { success: true };
     }),
 
-  forceExpire: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_FORCE_EXPIRE)
+  forceExpire: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_MANAGE)
     .input(z.object({
       mailboxId: z.string(),
       reason: z.string().min(5),
@@ -108,7 +108,7 @@ export const adminMailboxRouter = router({
       return { success: true };
     }),
 
-  restore: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_RESTORE)
+  restore: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_MANAGE)
     .input(z.object({
       mailboxId: z.string(),
       reason: z.string().min(5),
@@ -137,5 +137,55 @@ export const adminMailboxRouter = router({
       });
 
       return { success: true };
+    }),
+
+  listMessages: permissionProcedure(PERMISSIONS.ADMIN_MAILBOX_VIEW)
+    .input(z.object({
+      mailboxId: z.string(),
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(1).max(50).default(20),
+    }))
+    .query(async ({ input, ctx }) => {
+      const mailbox = await ctx.prisma.mailbox.findUnique({
+        where: { publicId: input.mailboxId },
+        select: { id: true, address: true },
+      });
+      if (!mailbox) throw new NotFoundError('Mailbox');
+
+      const where = { mailboxId: mailbox.id };
+
+      const [messages, total] = await Promise.all([
+        ctx.prisma.mailboxMessage.findMany({
+          where,
+          skip: (input.page - 1) * input.pageSize,
+          take: input.pageSize,
+          orderBy: { receivedAt: 'desc' },
+          select: {
+            publicId: true,
+            fromAddress: true,
+            subject: true,
+            bodyText: true,
+            isRead: true,
+            receivedAt: true,
+          },
+        }),
+        ctx.prisma.mailboxMessage.count({ where }),
+      ]);
+
+      return {
+        mailboxAddress: mailbox.address,
+        data: messages.map((msg) => ({
+          id: msg.publicId,
+          from: msg.fromAddress,
+          subject: msg.subject || '(No Subject)',
+          bodyText: msg.bodyText || '',
+          isRead: msg.isRead,
+          receivedAt: msg.receivedAt,
+        })),
+        total,
+        page: input.page,
+        pageSize: input.pageSize,
+        totalPages: Math.ceil(total / input.pageSize),
+      };
     }),
 });

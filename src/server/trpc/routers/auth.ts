@@ -46,22 +46,29 @@ export const authRouter = router({
 
   me: protectedProcedure
     .query(async ({ ctx }) => {
-      const user = await ctx.prisma.user.findUnique({
-        where: { id: ctx.actor.userId },
-        select: {
-          publicId: true,
-          email: true,
-          displayName: true,
-          avatarUrl: true,
-          status: true,
-          emailVerifiedAt: true,
-          createdAt: true,
-        },
-      });
+      const [user, credential] = await Promise.all([
+        ctx.prisma.user.findUnique({
+          where: { id: ctx.actor.userId },
+          select: {
+            publicId: true,
+            email: true,
+            displayName: true,
+            avatarUrl: true,
+            status: true,
+            emailVerifiedAt: true,
+            createdAt: true,
+          },
+        }),
+        ctx.prisma.userCredential.findUnique({
+          where: { userId: ctx.actor.userId },
+          select: { totpEnabled: true },
+        }),
+      ]);
       return {
         ...user,
         roles: ctx.actor.roles,
         planSlug: ctx.actor.planSlug,
+        totpEnabled: credential?.totpEnabled ?? false,
       };
     }),
 
@@ -125,7 +132,10 @@ export const authRouter = router({
     }),
 
   disableMfa: protectedProcedure
-    .input(z.object({ password: z.string().min(1) }))
+    .input(z.object({
+      password: z.string().min(1),
+      totpCode: z.string().length(6),
+    }))
     .mutation(async ({ input, ctx }) => {
       // Require re-authentication before disabling MFA
       const { reAuthenticate } = await import('../../services/step-up.service');
@@ -134,7 +144,13 @@ export const authRouter = router({
         requestId: ctx.requestId,
       });
 
+      // Verify TOTP code before disabling
       const { MfaService } = await import('../../services/mfa.service');
+      const valid = await MfaService.verifyMfaCode(ctx.actor.userId, input.totpCode);
+      if (!valid) {
+        throw new Error('Invalid TOTP code');
+      }
+
       return MfaService.disableMfa(ctx.actor.userId, {
         requestId: ctx.requestId,
       });

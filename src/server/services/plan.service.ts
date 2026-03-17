@@ -23,6 +23,7 @@ export const PlanService = {
       name: p.name,
       description: p.description,
       trialDays: p.trialDays,
+      metadata: p.metadata,
       features: Object.fromEntries(
         p.features.map((f) => [f.featureKey, parseFeatureValue(f.value, f.valueType)])
       ),

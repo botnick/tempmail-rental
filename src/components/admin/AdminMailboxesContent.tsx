@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { SkeletonTable } from '@/components/ui/Skeleton';
-import { Mail, Search, ShieldBan, Clock, RotateCcw, MoreVertical } from 'lucide-react';
+import { Mail, Search, ShieldBan, Clock, RotateCcw, MoreVertical, Eye, ArrowLeft, Inbox, User, Calendar } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { formatDate } from '@/lib/dayjs';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -16,6 +16,11 @@ interface AdminMailboxesProps {
 }
 
 type ActionType = 'quarantine' | 'forceExpire' | 'restore';
+
+interface SelectedMailbox {
+  id: string;
+  address: string;
+}
 
 export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
   const a = dict.admin;
@@ -52,6 +57,16 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // ─── Messages Viewer (inline, temp-mail.org style) ───
+  const [selectedMailbox, setSelectedMailbox] = useState<SelectedMailbox | null>(null);
+  const [msgPage, setMsgPage] = useState(1);
+  const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
+
+  const messagesQuery = trpc.admin.mailbox.listMessages.useQuery(
+    { mailboxId: selectedMailbox?.id ?? '', page: msgPage, pageSize: 20 },
+    { enabled: !!selectedMailbox },
+  );
+
   // Close menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -81,6 +96,140 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
     else if (confirmAction.action === 'restore') await restore.mutateAsync({ mailboxId: confirmAction.id, reason });
   };
 
+  // ─── If a mailbox is selected, show the messages viewer (inline, like temp-mail.org) ───
+  if (selectedMailbox) {
+    const msgs = messagesQuery.data?.data ?? [];
+
+    return (
+      <div>
+        {/* ── Back + Mailbox Header ── */}
+        <div className="mb-6 animate-fade-in-up">
+          <button
+            onClick={() => { setSelectedMailbox(null); setSelectedMessage(null); }}
+            className="flex items-center gap-2 text-sm text-text-muted hover:text-brand transition-colors mb-4 cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {a.mailboxes}
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand/10 flex items-center justify-center">
+              <Inbox className="w-5 h-5 text-brand" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold tracking-tight text-text-primary">{selectedMailbox.address}</h1>
+              <p className="text-xs text-text-muted">
+                {messagesQuery.data ? `${messagesQuery.data.total} message(s)` : a.messagesTitle?.replace('{address}', '') ?? ''}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Message Detail View (when a message is selected) ── */}
+        {selectedMessage ? (
+          <div className="animate-fade-in-up">
+            <button
+              onClick={() => setSelectedMessage(null)}
+              className="flex items-center gap-2 text-sm text-text-muted hover:text-brand transition-colors mb-4 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {a.viewMessages}
+            </button>
+
+            <div className="bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-2xl overflow-hidden">
+              {/* Email Header Section */}
+              <div className="px-6 py-5 border-b border-white/[0.04]">
+                <h2 className="text-lg font-bold text-text-primary mb-3">{selectedMessage.subject}</h2>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <User className="w-3.5 h-3.5 text-text-muted/50" />
+                    <span className="text-text-muted">{a.from}:</span>
+                    <span className="text-text-primary font-medium">{selectedMessage.from}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="w-3.5 h-3.5 text-text-muted/50" />
+                    <span className="text-text-muted">{a.receivedAt}:</span>
+                    <span className="text-text-secondary">{formatDate(selectedMessage.receivedAt)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email Body */}
+              <div className="px-6 py-5">
+                <pre className="text-sm text-text-secondary whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {selectedMessage.bodyText || '(empty)'}
+                </pre>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* ── Inbox List (temp-mail.org style) ── */
+          <div className="bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-2xl overflow-hidden animate-fade-in-up delay-1">
+            {messagesQuery.isLoading ? (
+              <div className="p-6"><SkeletonTable rows={6} /></div>
+            ) : msgs.length === 0 ? (
+              <EmptyState icon={<Mail className="w-6 h-6" />} title={a.noMessages ?? 'No messages'} description="" />
+            ) : (
+              <div className="divide-y divide-white/[0.04]">
+                {/* Table Header */}
+                <div className="grid grid-cols-[auto_2fr_3fr_1fr] gap-4 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
+                  <span className="w-2"></span>
+                  <span>{a.from}</span>
+                  <span>{a.subject}</span>
+                  <span className="text-right">{a.receivedAt}</span>
+                </div>
+
+                {/* Message Rows */}
+                {msgs.map((msg: any) => (
+                  <button
+                    key={msg.id}
+                    onClick={() => setSelectedMessage(msg)}
+                    className={`w-full grid grid-cols-[auto_2fr_3fr_1fr] gap-4 px-5 py-3.5 hover:bg-white/[0.03] transition-all cursor-pointer text-left group ${!msg.isRead ? 'bg-brand/[0.03]' : ''}`}
+                  >
+                    {/* Unread indicator */}
+                    <div className="flex items-center">
+                      <div className={`w-2 h-2 rounded-full ${msg.isRead ? 'bg-transparent' : 'bg-brand'}`} />
+                    </div>
+
+                    {/* From */}
+                    <div className="min-w-0">
+                      <p className={`text-sm truncate ${!msg.isRead ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
+                        {msg.from}
+                      </p>
+                    </div>
+
+                    {/* Subject */}
+                    <div className="min-w-0">
+                      <p className={`text-sm truncate ${!msg.isRead ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
+                        {msg.subject}
+                      </p>
+                    </div>
+
+                    {/* Date */}
+                    <div className="text-right">
+                      <span className="text-[11px] text-text-muted">{formatDate(msg.receivedAt)}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {(messagesQuery.data?.total ?? 0) > 20 && (
+              <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-white/[0.04]">
+                <button disabled={msgPage <= 1} onClick={() => setMsgPage((p) => p - 1)}
+                  className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.prev}</button>
+                <span className="text-xs text-text-muted">{ui.page} {msgPage} {ui.of} {messagesQuery.data?.totalPages ?? 1}</span>
+                <button disabled={msgPage >= (messagesQuery.data?.totalPages ?? 1)} onClick={() => setMsgPage((p) => p + 1)}
+                  className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.next}</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Normal Mailbox List View ───
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
@@ -147,6 +296,11 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
                   </button>
                   {openMenu === mb.id && (
                     <div className="absolute right-0 top-8 z-20 bg-bg-card border border-border-subtle rounded-xl shadow-2xl py-1 w-44 animate-fade-in">
+                      {/* View Messages */}
+                      <button onClick={() => { setSelectedMailbox({ id: mb.id, address: mb.address }); setMsgPage(1); setSelectedMessage(null); setOpenMenu(null); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-secondary hover:bg-white/[0.04] hover:text-brand transition-all cursor-pointer">
+                        <Eye className="w-3.5 h-3.5" />{a.viewMessages}
+                      </button>
                       {mb.status === 'ACTIVE' && (
                         <>
                           <button onClick={() => { setConfirmAction({ id: mb.id, action: 'quarantine' }); setOpenMenu(null); }}
