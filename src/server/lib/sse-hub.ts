@@ -128,7 +128,25 @@ class TempMailSSEHub {
         this.clients.delete(mailboxId);
       }
       logger.info(`SSE Client ${client.id} disconnected from mailbox ${mailboxId}`);
+
+      // L1 fix: unsubscribe from Redis when no clients remain
+      if (this.isListening && this.getTotalClientCount() === 0) {
+        this.subscriber?.unsubscribe('tempmail:events').catch((e) => {
+          logger.error('Failed to unsubscribe from Redis tempmail:events', { error: e });
+        });
+        this.isListening = false;
+        logger.info('SSE: No clients remaining — unsubscribed from Redis');
+      }
     }
+  }
+
+  /** Get total client count across all mailboxes */
+  private getTotalClientCount(): number {
+    let total = 0;
+    for (const clientSet of this.clients.values()) {
+      total += clientSet.size;
+    }
+    return total;
   }
 
   private broadcastToMailbox(mailboxId: string, eventData: unknown) {
@@ -144,8 +162,15 @@ class TempMailSSEHub {
    * Called by Webhook Endpoint. Publishes to Redis so all instances receive it.
    */
   public async publishEvent(mailboxId: string, eventData: Record<string, unknown>) {
-    const payload = JSON.stringify({ mailboxId, ...eventData });
-    await getRedis().publish('tempmail:events', payload);
+    try {
+      const payload = JSON.stringify({ mailboxId, ...eventData });
+      await getRedis().publish('tempmail:events', payload);
+    } catch (err) {
+      logger.error('Failed to publish SSE event to Redis', {
+        error: err instanceof Error ? err : new Error(String(err)),
+        mailboxId,
+      });
+    }
   }
 
   /** Graceful shutdown — clear intervals */

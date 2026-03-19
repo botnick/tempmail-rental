@@ -4,6 +4,7 @@ import { trpc } from '@/lib/trpc';
 import { useToast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   User, Lock, ShieldCheck, Mail, Copy, Loader2,
   KeyRound, ShieldOff, Eye, EyeOff, Check, X,
@@ -17,6 +18,7 @@ interface SettingsContentProps {
   dict: {
     settings: Record<string, string>;
     ui: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
@@ -44,6 +46,7 @@ const getPasswordStrength = (pw: string): { level: number; label: string; color:
 export function SettingsContent({ dict }: SettingsContentProps) {
   const d = dict.settings;
   const ui = dict.ui;
+  const tips = dict.tooltips ?? {};
   const toast = useToast();
 
   const me = trpc.auth.me.useQuery();
@@ -162,7 +165,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
           <p className="text-sm text-text-muted">{d.subtitle}</p>
         </div>
       </div>
@@ -264,6 +267,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 className="w-full bg-white/[0.04] border border-border-subtle rounded-xl text-text-primary text-sm py-2.5 pl-10 pr-10 outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/10 transition-all placeholder:text-text-muted/40 font-mono"
               />
+              <Tooltip text={tips.togglePassword} position="left">
               <button
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
@@ -271,6 +275,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               >
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -285,6 +290,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full bg-white/[0.04] border border-border-subtle rounded-xl text-text-primary text-sm py-2.5 pl-10 pr-10 outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/10 transition-all placeholder:text-text-muted/40 font-mono"
               />
+              <Tooltip text={tips.togglePassword} position="left">
               <button
                 type="button"
                 onClick={() => setShowNew(!showNew)}
@@ -292,6 +298,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               >
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+              </Tooltip>
             </div>
             {/* Strength meter */}
             {newPassword && (
@@ -331,6 +338,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
                   passwordsMismatch ? 'border-red-500/40 ring-1 ring-red-500/10' : ''
                 }`}
               />
+              <Tooltip text={tips.togglePassword} position="left">
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
@@ -338,6 +346,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               >
                 {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+              </Tooltip>
             </div>
             {passwordsMatch && (
               <p className="text-[10px] text-emerald-400 mt-1 flex items-center gap-1">
@@ -406,6 +415,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
 
           {/* Action button */}
           {isMfaEnabled ? (
+            <Tooltip text={tips.disableMfa} position="bottom">
             <button
               onClick={() => { setDisablePassword(''); setDisableTotpCode(''); setDisableModalOpen(true); }}
               className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-danger border border-danger/25 rounded-xl hover:bg-danger/8 hover:border-danger/40 active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
@@ -413,7 +423,9 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               <ShieldOff className="w-4 h-4" />
               {d.disableMfa}
             </button>
+            </Tooltip>
           ) : (
+            <Tooltip text={tips.enableMfa} position="bottom">
             <button
               onClick={handleEnableMfa}
               disabled={mfaLoading}
@@ -422,6 +434,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               {mfaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
               {d.enableMfa}
             </button>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -476,6 +489,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
               <div className="bg-white/[0.03] border border-border-subtle rounded-xl px-3.5 py-3 mb-5">
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-[9px] font-medium text-text-muted/60 uppercase tracking-widest">{d.copySecret}</p>
+                  <Tooltip text={tips.copySecret} position="left">
                   <button
                     onClick={copySecret}
                     className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.05] text-text-secondary hover:text-text-primary transition-all cursor-pointer"
@@ -483,6 +497,7 @@ export function SettingsContent({ dict }: SettingsContentProps) {
                     {secretCopied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
                     {secretCopied ? 'Copied!' : 'Copy'}
                   </button>
+                  </Tooltip>
                 </div>
                 <code className="block text-xs font-mono text-emerald-400 tracking-[0.12em] break-all leading-relaxed select-all">{mfaData.secret}</code>
               </div>

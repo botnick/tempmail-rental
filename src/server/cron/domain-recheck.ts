@@ -82,6 +82,7 @@ export async function recheckDomainDns(): Promise<{
         status: { in: [DomainStatus.VERIFIED, DomainStatus.ACTIVE] },
         isSystem: false,
         deletedAt: null,
+        updatedAt: { lt: staleThreshold }, // L2 fix: only fetch domains due for re-check
       },
       include: {
         verifications: {

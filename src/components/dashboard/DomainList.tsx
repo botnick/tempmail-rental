@@ -6,37 +6,40 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import {
   Globe, Plus, ShieldCheck, Trash2, Settings2, X,
   Copy, Check, ChevronRight, AlertTriangle, Mail,
-  Lock, FileText, Shield, Server, Loader2, Search,
+  FileText, Server, Loader2, Search,
 } from 'lucide-react';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+
+// Mail server info types (from GET /api/mail-server-info)
+interface MailServerNode {
+  hostname: string;
+  ip: string;
+  region: string;
+  active: boolean;
+}
+
+interface MailServerInfo {
+  hostname: string;
+  ip: string;
+  dns_records: {
+    mx: Array<{ type: string; name: string; value: string; priority: number }>;
+  };
+  nodes: MailServerNode[];
+}
 
 interface DomainListProps {
   dict: {
     domains: Record<string, string>;
     ui: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
-/**
- * Get the app host from env. Falls back to window.location.host.
- */
-function getAppHost(): string {
-  if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_APP_URL) {
-    try {
-      return new URL(process.env.NEXT_PUBLIC_APP_URL).host;
-    } catch {
-      return process.env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, '');
-    }
-  }
-  if (typeof window !== 'undefined') {
-    return window.location.host;
-  }
-  return 'your-app.com';
-}
 
 // ─── DNS Record Card ───────────────────────────────────────────────
 function DnsRecord({
@@ -129,6 +132,7 @@ function DnsRecord({
 export function DomainList({ dict }: DomainListProps) {
   const d = dict.domains;
   const ui = dict.ui;
+  const tips = dict.tooltips ?? {};
   const toast = useToast();
 
   const [showAdd, setShowAdd] = useState(false);
@@ -139,7 +143,17 @@ export function DomainList({ dict }: DomainListProps) {
   const [dnsCheckLoading, setDnsCheckLoading] = useState<Record<string, boolean>>({});
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  const appHost = useMemo(() => getAppHost(), []);
+  // Fetch mail server info for DNS setup instructions
+  const [serverInfo, setServerInfo] = useState<MailServerInfo | null>(null);
+  const [serverInfoLoading, setServerInfoLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/mail-server-info')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setServerInfo(data))
+      .catch(() => null)
+      .finally(() => setServerInfoLoading(false));
+  }, []);
 
   const domains = trpc.domain.list.useQuery();
 
@@ -204,19 +218,20 @@ export function DomainList({ dict }: DomainListProps) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8 animate-fade-in-up">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
-          <p className="text-sm text-text-muted">{d.subtitle}</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
+          <p className="text-xs sm:text-sm text-text-muted">{d.subtitle}</p>
         </div>
+        <Tooltip text={tips.addDomain} position="bottom">
         <button
           onClick={() => setShowAdd(true)}
-          className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all duration-300 flex items-center gap-2 cursor-pointer"
+          className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all duration-300 flex items-center gap-2 cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           {d.add}
         </button>
+        </Tooltip>
       </div>
 
       {/* Domain List */}
@@ -243,7 +258,7 @@ export function DomainList({ dict }: DomainListProps) {
             const verified = isVerified(domain.status);
             const suspended = isSuspended(domain.status);
             const dnsOpen = showDnsFor === domain.id;
-            const showDns = domain.verification && (!verified || dnsOpen);
+            const showDns = !verified ? (domain.verification || dnsOpen) : dnsOpen;
 
             return (
               <div
@@ -254,25 +269,37 @@ export function DomainList({ dict }: DomainListProps) {
               >
                 {/* Domain Header Row */}
                 <div className="p-4 sm:p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        suspended
-                          ? 'bg-gradient-to-br from-red-500/15 to-rose-500/15 border border-red-500/20'
-                          : verified
-                            ? 'bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20'
-                            : 'bg-gradient-to-br from-amber-500/15 to-brand/15 border border-amber-500/20'
-                      }`}>
-                        {suspended
-                          ? <ShieldCheck className="w-4.5 h-4.5 text-red-400" />
-                          : verified
-                            ? <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
-                            : <Globe className="w-4.5 h-4.5 text-amber-400" />
-                        }
+                  <div className="flex items-start gap-3">
+                    {/* Icon */}
+                    <div className={`w-10 h-10 mt-0.5 rounded-xl flex items-center justify-center shrink-0 ${
+                      suspended
+                        ? 'bg-gradient-to-br from-red-500/15 to-rose-500/15 border border-red-500/20'
+                        : verified
+                          ? 'bg-gradient-to-br from-emerald-500/15 to-teal-500/15 border border-emerald-500/20'
+                          : 'bg-gradient-to-br from-amber-500/15 to-brand/15 border border-amber-500/20'
+                    }`}>
+                      {suspended
+                        ? <ShieldCheck className="w-4.5 h-4.5 text-red-400" />
+                        : verified
+                          ? <ShieldCheck className="w-4.5 h-4.5 text-emerald-400" />
+                          : <Globe className="w-4.5 h-4.5 text-amber-400" />
+                      }
+                    </div>
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      {/* Row 1: domain name + badge */}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[13px] sm:text-sm font-bold text-text-primary font-mono truncate">{domain.name}</p>
+                        <StatusBadge
+                          status={suspended ? 'SUSPENDED' : verified ? 'VERIFIED' : 'PENDING_DNS'}
+                          label={suspended ? (d.suspended || 'Suspended') : verified ? ui.verified : ui.pending}
+                        />
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-text-primary font-mono truncate">{domain.name}</p>
-                        <p className="text-[10px] text-text-muted mt-0.5">
+
+                      {/* Row 2: status text + inline actions */}
+                      <div className="flex items-center justify-between gap-2 mt-1.5">
+                        <p className="text-[10px] text-text-muted">
                           {suspended
                             ? `⛔ ${d.statusSuspended || 'Subscription expired'}`
                             : verified
@@ -280,64 +307,65 @@ export function DomainList({ dict }: DomainListProps) {
                               : `⏳ ${d.statusPending}`
                           }
                         </p>
+
+                        {/* Compact action buttons */}
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {/* DNS Toggle */}
+                          <Tooltip text={tips.toggleDns} position="bottom">
+                          <button
+                            onClick={() => setShowDnsFor(dnsOpen ? null : domain.id)}
+                            className={`h-7 px-2 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                              dnsOpen
+                                ? 'bg-brand text-white shadow-sm shadow-brand/20'
+                                : 'text-text-muted/50 hover:text-brand hover:bg-brand/10'
+                            }`}
+                          >
+                            <Settings2 className="w-3 h-3" />
+                            DNS
+                          </button>
+                          </Tooltip>
+
+                          {/* Check DNS */}
+                          <Tooltip text={tips.checkDns} position="bottom">
+                          <button
+                            onClick={() => handleCheckDns(domain.id)}
+                            disabled={dnsCheckLoading[domain.id]}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-sky-400/60 hover:text-sky-400 hover:bg-sky-400/10 transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            {dnsCheckLoading[domain.id]
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Search className="w-3.5 h-3.5" />
+                            }
+                          </button>
+                          </Tooltip>
+
+                          {/* Verify (unverified only) */}
+                          {!verified && (
+                            <Tooltip text={tips.verifyDns} position="bottom">
+                            <button
+                              onClick={() => handleVerify(domain.id)}
+                              disabled={verifyingId === domain.id}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-400/10 transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                              {verifyingId === domain.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <ShieldCheck className="w-3.5 h-3.5" />
+                              }
+                            </button>
+                            </Tooltip>
+                          )}
+
+                          {/* Delete */}
+                          <Tooltip text={tips.deleteDomain} position="bottom">
+                          <button
+                            onClick={() => setShowRemove(domain.id)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted/30 hover:text-danger hover:bg-danger/10 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          </Tooltip>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <StatusBadge
-                        status={suspended ? 'SUSPENDED' : verified ? 'VERIFIED' : 'PENDING_DNS'}
-                        label={suspended ? (d.suspended || 'Suspended') : verified ? ui.verified : ui.pending}
-                      />
-
-                      {/* DNS Toggle */}
-                      <button
-                        onClick={() => setShowDnsFor(dnsOpen ? null : domain.id)}
-                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                          dnsOpen
-                            ? 'bg-brand text-white shadow-md shadow-brand/20'
-                            : 'text-text-secondary bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.06]'
-                        }`}
-                      >
-                        <Settings2 className="w-3 h-3" />
-                        DNS
-                        <ChevronRight className={`w-3 h-3 transition-transform ${dnsOpen ? 'rotate-90' : ''}`} />
-                      </button>
-
-                      {/* Check DNS */}
-                      <button
-                        onClick={() => handleCheckDns(domain.id)}
-                        disabled={dnsCheckLoading[domain.id]}
-                        className="px-3 py-1.5 text-[11px] font-bold text-sky-400 border border-sky-400/25 rounded-lg hover:bg-sky-400/8 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                      >
-                        {dnsCheckLoading[domain.id]
-                          ? <Loader2 className="w-3 h-3 animate-spin" />
-                          : <Search className="w-3 h-3" />
-                        }
-                        {d.checkDns || 'Check DNS'}
-                      </button>
-
-                      {/* Verify (unverified only) */}
-                      {!verified && (
-                        <button
-                          onClick={() => handleVerify(domain.id)}
-                          disabled={verifyingId === domain.id}
-                          className="px-3 py-1.5 text-[11px] font-bold text-emerald-400 border border-emerald-400/25 rounded-lg hover:bg-emerald-400/8 transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          {verifyingId === domain.id
-                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                            : <ShieldCheck className="w-3 h-3" />
-                          }
-                          {d.verifyDns}
-                        </button>
-                      )}
-
-                      {/* Delete */}
-                      <button
-                        onClick={() => setShowRemove(domain.id)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted/30 hover:text-danger hover:bg-danger/8 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -378,23 +406,7 @@ export function DomainList({ dict }: DomainListProps) {
                           </span>
                         );
                       })()}
-                      {/* SPF — show includesUs status */}
-                      {(() => {
-                        const spf = dnsCheckResults[domain.id]?.spf;
-                        if (!spf) return null;
-                        const ok = spf.found && spf.includesUs;
-                        const partial = spf.found && !spf.includesUs;
-                        return (
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md ${
-                            ok ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : partial ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                          }`}>
-                            {ok ? '✓' : partial ? '⚠' : '✗'} SPF
-                            {partial && <span className="text-[9px] opacity-70 ml-0.5">({d.dnsNotIncludingUs || 'missing include'})</span>}
-                          </span>
-                        );
-                      })()}
+
                     </div>
                   </div>
                 )}
@@ -437,48 +449,57 @@ export function DomainList({ dict }: DomainListProps) {
                     <div className="px-5 pb-5 space-y-5">
                       {(() => {
                         const dnsLabels = { type: d.dnsType, name: d.dnsHost, value: d.dnsValue, copy: d.dnsCopy, copied: d.dnsCopied };
+
+                        if (serverInfoLoading) {
+                          return (
+                            <div className="flex items-center justify-center py-8 text-text-muted">
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              <span className="text-xs">{d.loadingDns || 'Loading DNS records...'}</span>
+                            </div>
+                          );
+                        }
+
+                        if (!serverInfo) {
+                          return (
+                            <div className="px-4 py-3 bg-red-500/[0.06] border border-red-500/15 rounded-xl text-[11px] text-red-300">
+                              {d.mailServerUnavailable || 'Mail server info unavailable. Configure in Admin → TempMail.'}
+                            </div>
+                          );
+                        }
+
+                        const mxRecords = serverInfo.dns_records?.mx || [];
+
+                        let stepNum = 1;
+
                         return (
                           <>
-                            <DnsRecord
-                              step={1}
-                              title={d.dnsOwnership}
-                              icon={FileText}
-                              type={domain.verification.recordType}
-                              name={domain.verification.recordName}
-                              value={domain.verification.recordValue}
-                              accent="bg-brand"
-                              labels={dnsLabels}
-                            />
-                            <DnsRecord
-                              step={2}
-                              title={d.dnsEmailRouting}
-                              icon={Mail}
-                              type="MX"
-                              name="@"
-                              value={`mx.${appHost} (Priority 10)`}
-                              accent="bg-teal-500"
-                              labels={dnsLabels}
-                            />
-                            <DnsRecord
-                              step={3}
-                              title={d.dnsSPF}
-                              icon={Shield}
-                              type="TXT"
-                              name="@"
-                              value={`v=spf1 include:_spf.${appHost} ~all`}
-                              accent="bg-sky-500"
-                              labels={dnsLabels}
-                            />
-                            <DnsRecord
-                              step={4}
-                              title={d.dnsDMARC}
-                              icon={Lock}
-                              type="TXT"
-                              name="_dmarc"
-                              value="v=DMARC1; p=none;"
-                              accent="bg-violet-500"
-                              labels={dnsLabels}
-                            />
+                            {/* Step 1: Ownership verification (only if verification data exists) */}
+                            {domain.verification && (
+                              <DnsRecord
+                                step={stepNum++}
+                                title={d.dnsOwnership}
+                                icon={FileText}
+                                type={domain.verification.recordType}
+                                name={domain.verification.recordName}
+                                value={domain.verification.recordValue}
+                                accent="bg-brand"
+                                labels={dnsLabels}
+                              />
+                            )}
+                            {/* Step 2+: MX records — one per node for load balancing */}
+                            {mxRecords.map((mx: any, i: number) => (
+                              <DnsRecord
+                                key={`mx-${i}`}
+                                step={stepNum++}
+                                title={`${d.dnsEmailRouting}${mxRecords.length > 1 ? ` (${serverInfo.nodes?.[i]?.region || `#${i + 1}`})` : ''}`}
+                                icon={Mail}
+                                type="MX"
+                                name={mx.name || '@'}
+                                value={`${mx.value} (Priority ${mx.priority})`}
+                                accent="bg-teal-500"
+                                labels={dnsLabels}
+                              />
+                            ))}
                           </>
                         );
                       })()}

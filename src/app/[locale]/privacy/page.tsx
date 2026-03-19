@@ -42,7 +42,7 @@ export default async function PrivacyPage({ params }: { params: Promise<{ locale
               <Shield className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-text-primary">นโยบายความเป็นส่วนตัว</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text-primary">นโยบายความเป็นส่วนตัว</h1>
               <p className="text-xs text-text-muted">Privacy Policy</p>
             </div>
           </div>

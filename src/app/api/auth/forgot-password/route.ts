@@ -9,8 +9,8 @@ const forgotPasswordSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Rate limit: 3 attempts per 15 min
-    const rl = await restRateLimit(req, 'auth.register');
+    // Rate limit: 3 attempts per 1 hour
+    const rl = await restRateLimit(req, 'auth.password-reset');
     if (!rl.allowed) return rateLimitResponse(rl.retryAfterSec);
 
     const body = await req.json();

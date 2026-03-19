@@ -3,6 +3,7 @@ import { BRAND, ROUTES } from '@/config/ui';
 import { constructMetadata } from '@/lib/seo';
 import { getDictionary } from '@/dictionaries';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { LandingMobileNav } from '@/components/layout/LandingMobileNav';
 import type { Metadata } from 'next';
 import { Mail, Zap, ArrowRight, ChevronRight, Clock, Shield, Globe, Sparkles, Infinity, Lock, Activity, Eye, Star } from 'lucide-react';
 import { CmsService } from '@/server/services/cms.service';
@@ -65,7 +66,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
       <div className="noise-overlay" />
 
       {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 lg:px-12 py-5 max-w-7xl mx-auto">
+      <nav className="relative z-10 flex items-center justify-between px-4 sm:px-6 lg:px-12 py-5 max-w-7xl mx-auto">
         <Link href={`/${locale}`} className="flex items-center gap-2.5 group">
           <div className="w-10 h-10 bg-gradient-to-br from-brand to-amber rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-2 shadow-lg shadow-brand/20">
             <Logo className="w-5 h-5 text-white" />
@@ -89,6 +90,17 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
             {dict.nav.register}
           </Link>
         </div>
+        <LandingMobileNav
+          locale={locale}
+          links={[
+            { href: `/${locale}${ROUTES.pricing}`, label: dict.nav.pricing },
+            { href: '#features', label: dict.nav.features },
+          ]}
+          loginLabel={dict.nav.login}
+          loginHref={`/${locale}${ROUTES.login}`}
+          registerLabel={dict.nav.register}
+          registerHref={`/${locale}${ROUTES.register}`}
+        />
       </nav>
 
       {/* Hero */}
@@ -100,7 +112,7 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           </span>
         </div>
 
-        <h1 className="animate-fade-in-up delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-[1.05] tracking-tight mb-8">
+        <h1 className="animate-fade-in-up delay-1 text-3xl sm:text-5xl lg:text-7xl font-extrabold leading-[1.05] tracking-tight mb-8">
           {dict.brand.heroTitle[0]}
           <br />
           <span className="text-gradient-vivid">{dict.brand.heroTitle[1]}</span>

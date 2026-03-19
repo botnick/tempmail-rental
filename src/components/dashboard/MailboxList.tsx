@@ -7,8 +7,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { SkeletonTable } from '@/components/ui/Skeleton';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Link as LinkIcon, Mail, MailOpen, MoreVertical, Plus, RefreshCw, Search, ShieldCheck, Timer, Trash2, Paperclip, ExternalLink, Code, FileText, Inbox } from 'lucide-react';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Globe, Link as LinkIcon, Mail, MailOpen, MoreVertical, Plus, RefreshCw, Search, ShieldCheck, Timer, Trash2, Paperclip, ExternalLink, Code, FileText, Inbox } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { formatDate } from '@/lib/dayjs';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -22,6 +23,7 @@ interface MailboxListProps {
   dict: {
     mailboxes: Record<string, string>;
     ui: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
@@ -95,14 +97,14 @@ function MessageRow({
       {/* Message summary row */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 py-3 px-4 hover:bg-white/[0.02] transition-all text-left cursor-pointer group"
+        className="w-full flex items-center gap-2 sm:gap-3 py-3 px-3 sm:px-4 hover:bg-white/[0.02] transition-all text-left cursor-pointer group"
       >
         <span className="text-text-muted/40 shrink-0 transition-transform duration-200" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0)' }}>
           <ChevronRight className="w-3.5 h-3.5" />
         </span>
 
-        {/* Sender */}
-        <span className="text-xs text-text-secondary truncate min-w-0 w-32 shrink-0 font-medium" title={decodeMIME(msg.from || '')}>
+        {/* Sender — hidden on very small screens */}
+        <span className="hidden sm:inline text-xs text-text-secondary truncate min-w-0 w-32 shrink-0 font-medium" title={decodeMIME(msg.from || '')}>
           {decodeMIME(msg.from?.replace(/<.*>/, '').trim() || msg.from || '')}
         </span>
 
@@ -126,10 +128,10 @@ function MessageRow({
       {expanded && (
         <div className="bg-white/[0.015] border-t border-white/[0.04] animate-fade-in-up">
           {/* Header bar */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.04]">
-            <div className="flex items-center gap-4 text-[11px] text-text-muted">
-              <span><span className="text-text-muted/50">{dict.from}:</span> {decodeMIME(msg.from || '')}</span>
-              <span><span className="text-text-muted/50">{dict.receivedAt}:</span> {new Date(msg.receivedAt).toLocaleString()}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b border-white/[0.04]">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-[11px] text-text-muted overflow-hidden">
+              <span className="truncate"><span className="text-text-muted/50">{dict.from}:</span> {decodeMIME(msg.from || '')}</span>
+              <span className="truncate"><span className="text-text-muted/50">{dict.receivedAt}:</span> {new Date(msg.receivedAt).toLocaleString()}</span>
             </div>
             <div className="flex items-center gap-2">
               {/* Open full page link */}
@@ -303,6 +305,7 @@ function MailboxRow({
   onDelete,
   dict,
   ui,
+  tips,
 }: {
   mb: any;
   isExpanded: boolean;
@@ -311,6 +314,7 @@ function MailboxRow({
   onDelete: () => void;
   dict: Record<string, string>;
   ui: Record<string, string>;
+  tips: Record<string, string>;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -324,59 +328,81 @@ function MailboxRow({
   }, [mb.address]);
 
   return (
-    <div className={`flex items-center justify-between px-5 py-4 transition-all group ${isExpanded ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}`}>
-      <button
-        onClick={onToggle}
-        className="flex items-center gap-4 min-w-0 flex-1 text-left cursor-pointer"
-      >
-        <span className="text-text-muted/40 shrink-0 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>
+    <div className={`px-3 sm:px-5 py-3 sm:py-4 transition-all group ${isExpanded ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}`}>
+      <div className="flex items-start gap-2 sm:gap-3">
+        {/* Chevron */}
+        <button
+          onClick={onToggle}
+          className="mt-2.5 text-text-muted/40 shrink-0 transition-transform duration-200 cursor-pointer"
+          style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}
+        >
           <ChevronRight className="w-4 h-4" />
-        </span>
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isExpanded ? 'bg-gradient-to-br from-brand/25 to-brand/10 ring-2 ring-brand/15' : 'bg-brand/10'} transition-all`}>
-          <Mail className={`w-5 h-5 ${isExpanded ? 'text-brand' : 'text-brand/70'}`} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-base font-semibold text-text-primary group-hover:text-brand transition-colors font-mono truncate">
-            {mb.address}
-          </p>
-          <div className="flex items-center gap-3 mt-1">
-            <span className="text-xs text-text-muted">{mb.messageCount ?? 0} {dict.messagesCount}</span>
-            <span className="text-xs text-text-muted flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {mb.expiresAt ? formatDate(mb.expiresAt) : '—'}
-            </span>
+        </button>
+
+        {/* Icon */}
+        <button
+          onClick={onToggle}
+          className={`w-9 h-9 sm:w-10 sm:h-10 mt-0.5 rounded-xl flex items-center justify-center shrink-0 cursor-pointer ${isExpanded ? 'bg-gradient-to-br from-brand/25 to-brand/10 ring-2 ring-brand/15' : 'bg-brand/10'} transition-all`}
+        >
+          <Mail className={`w-4 h-4 sm:w-[18px] sm:h-[18px] ${isExpanded ? 'text-brand' : 'text-brand/70'}`} />
+        </button>
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          {/* Row 1: address + badge */}
+          <button
+            onClick={onToggle}
+            className="w-full flex items-center justify-between gap-2 text-left cursor-pointer"
+          >
+            <p className="text-[13px] sm:text-sm font-semibold text-text-primary group-hover:text-brand transition-colors font-mono truncate">
+              {mb.address}
+            </p>
+            <StatusBadge status={mb.status} />
+          </button>
+
+          {/* Row 2: stats + inline actions */}
+          <div className="flex items-center justify-between gap-2 mt-1.5">
+            <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs text-text-muted">
+              <span>{mb.messageCount ?? 0} {dict.messagesCount}</span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {mb.expiresAt ? formatDate(mb.expiresAt) : '—'}
+              </span>
+            </div>
+
+            {/* Compact action buttons */}
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Tooltip text={tips.copyEmail} position="bottom">
+              <button
+                onClick={handleCopy}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                  copied
+                    ? 'text-green-400 bg-green-400/10'
+                    : 'text-text-muted/50 hover:text-brand hover:bg-brand/10'
+                }`}
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              </Tooltip>
+              <Tooltip text={tips.extendTtl} position="bottom">
+              <button
+                onClick={onExtend}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted/50 hover:text-brand hover:bg-brand/10 transition-all cursor-pointer"
+              >
+                <Timer className="w-3.5 h-3.5" />
+              </button>
+              </Tooltip>
+              <Tooltip text={tips.deleteMailbox} position="bottom">
+              <button
+                onClick={onDelete}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted/30 hover:text-danger hover:bg-danger/10 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              </Tooltip>
+            </div>
           </div>
         </div>
-      </button>
-      <div className="flex items-center gap-2 shrink-0 ml-4">
-        <StatusBadge status={mb.status} />
-        {/* Copy email - prominent button */}
-        <button
-          onClick={handleCopy}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-            copied
-              ? 'bg-green-400/10 text-green-400 border-green-400/20'
-              : 'bg-white/[0.04] text-text-muted hover:text-brand hover:bg-brand/10 hover:border-brand/20 border-white/[0.06]'
-          }`}
-          title={dict.copyEmail}
-        >
-          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          <span className="hidden sm:inline">{copied ? dict.copied : dict.copyEmail}</span>
-        </button>
-        <button
-          onClick={onExtend}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-muted/40 hover:text-brand hover:bg-brand/8 transition-all cursor-pointer"
-          title={dict.extendTtl}
-        >
-          <Timer className="w-4 h-4" />
-        </button>
-        <button
-          onClick={onDelete}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-text-muted/40 hover:text-danger hover:bg-danger/8 transition-all cursor-pointer"
-          title={ui.delete}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
       </div>
     </div>
   );
@@ -386,6 +412,7 @@ function MailboxRow({
 export function MailboxList({ dict }: MailboxListProps) {
   const d = dict.mailboxes;
   const ui = dict.ui;
+  const tips = dict.tooltips ?? {};
   const toast = useToast();
   const params = useParams();
   const locale = (params.locale as string) || 'en';
@@ -396,9 +423,35 @@ export function MailboxList({ dict }: MailboxListProps) {
   const [showDelete, setShowDelete] = useState<string | null>(null);
   const [showExtend, setShowExtend] = useState<string | null>(null);
   const [createUsername, setCreateUsername] = useState('');
+
+  // RFC 5321/5322 username validation
+  const usernameError = useMemo(() => {
+    const v = createUsername;
+    if (!v) return ''; // optional — empty means random
+    if (v.length > 30) return d.usernameMaxLength || 'Must be 30 characters or less';
+    if (!/^[a-z0-9._-]+$/.test(v)) return d.usernameInvalidChars || 'Only letters, numbers, dots, hyphens and underscores';
+    if (/^[._-]/.test(v)) return d.usernameStartEnd || 'Must start and end with a letter or number';
+    if (/[._-]$/.test(v)) return d.usernameStartEnd || 'Must start and end with a letter or number';
+    if (/\.{2,}/.test(v)) return d.usernameConsecutiveDots || 'Consecutive dots not allowed';
+    if (/[-_]{2,}/.test(v)) return d.usernameConsecutiveSpecial || 'Consecutive hyphens/underscores not allowed';
+    return '';
+  }, [createUsername, d]);
   const [selectedDomainId, setSelectedDomainId] = useState('');
+  const [domainDropdownOpen, setDomainDropdownOpen] = useState(false);
+  const domainDropdownRef = useRef<HTMLDivElement>(null);
   const [extendHours, setExtendHours] = useState(24);
   const [expandedMailbox, setExpandedMailbox] = useState<string | null>(null);
+
+  // Close domain dropdown on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (domainDropdownRef.current && !domainDropdownRef.current.contains(e.target as Node)) {
+        setDomainDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const mailboxes = trpc.mailbox.list.useQuery({ page, pageSize: 20 });
   const domains = trpc.tempmail.listDomains.useQuery(undefined, {
@@ -457,12 +510,13 @@ export function MailboxList({ dict }: MailboxListProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8 animate-fade-in-up">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
-          <p className="text-sm text-text-muted">{d.subtitle}</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
+          <p className="text-xs sm:text-sm text-text-muted">{d.subtitle}</p>
         </div>
         <div className="flex items-center gap-3">
+          <Tooltip text={tips.createMailbox} position="bottom">
           <button
             onClick={() => setShowCreate(true)}
             className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all duration-300 flex items-center gap-2 cursor-pointer"
@@ -471,6 +525,7 @@ export function MailboxList({ dict }: MailboxListProps) {
             <Plus className="w-4 h-4" />
             {d.create}
           </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -523,6 +578,7 @@ export function MailboxList({ dict }: MailboxListProps) {
                     onDelete={() => setShowDelete(mb.id)}
                     dict={d}
                     ui={ui}
+                    tips={tips}
                   />
 
                   {/* Inline Inbox Panel */}
@@ -544,9 +600,13 @@ export function MailboxList({ dict }: MailboxListProps) {
       {/* Pagination */}
       {(mailboxes.data?.total ?? 0) > 20 && (
         <div className="flex items-center justify-center gap-2 mt-4">
+          <Tooltip text={tips.prevPage} position="top">
           <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.prev}</button>
+          </Tooltip>
           <span className="text-xs text-text-muted">{ui.page} {page}</span>
+          <Tooltip text={tips.nextPage} position="top">
           <button disabled={filtered.length < 20} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.next}</button>
+          </Tooltip>
         </div>
       )}
 
@@ -560,40 +620,102 @@ export function MailboxList({ dict }: MailboxListProps) {
               <input
                 type="text"
                 value={createUsername}
-                onChange={(e) => setCreateUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
-                className="flex-1 bg-white/[0.04] border border-border-subtle rounded-l-xl text-text-primary text-sm py-3 px-4 outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/10 transition-all placeholder:text-text-muted/40 font-mono"
+                onChange={(e) => setCreateUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 30))}
+                className={`flex-1 bg-white/[0.04] border rounded-l-xl text-text-primary text-sm py-3 px-4 outline-none focus:ring-2 transition-all placeholder:text-text-muted/40 font-mono ${usernameError ? 'border-red-500/50 focus:border-red-500/60 focus:ring-red-500/10' : 'border-border-subtle focus:border-brand/40 focus:ring-brand/10'}`}
                 placeholder={d.usernamePlaceholder || 'username'}
+                maxLength={30}
               />
               <span className="bg-white/[0.06] border-y border-border-subtle text-text-muted text-sm py-3 px-2.5 select-none font-mono font-bold">@</span>
-              <select
-                value={activeDomainId}
-                onChange={(e) => setSelectedDomainId(e.target.value)}
-                className="bg-white/[0.04] border border-border-subtle rounded-r-xl text-text-primary text-sm py-3 px-3 outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/10 transition-all cursor-pointer font-mono min-w-[140px]"
-                id="domain-select"
-              >
-                {domains.isLoading || customDomains.isLoading ? (
-                  <option value="">{ui.loading || 'Loading...'}</option>
-                ) : domainList.length === 0 ? (
-                  <option value="">{d.noDomains}</option>
-                ) : (
-                  <>
-                    {publicDomains.length > 0 && (
-                      <optgroup label={d.publicDomain}>
-                        {publicDomains.map((dom: any) => (
-                          <option key={dom.id} value={dom.id}>{dom.domainName}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {verifiedCustomDomains.length > 0 && (
-                      <optgroup label={d.customDomain}>
-                        {verifiedCustomDomains.map((dom: any) => (
-                          <option key={dom.id} value={dom.id}>{dom.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </>
+              {/* Custom domain dropdown */}
+              <div className="relative min-w-[160px]" ref={domainDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setDomainDropdownOpen(!domainDropdownOpen)}
+                  className="w-full bg-white/[0.04] border border-border-subtle rounded-r-xl text-text-primary text-sm py-3 px-3 outline-none focus:border-brand/40 focus:ring-2 focus:ring-brand/10 transition-all cursor-pointer font-mono flex items-center justify-between gap-2"
+                  id="domain-select"
+                >
+                  <span className="truncate">
+                    {domains.isLoading || customDomains.isLoading
+                      ? (ui.loading || 'Loading...')
+                      : activeDomainName || (d.noDomains || 'No domains')}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-text-muted/60 shrink-0 transition-transform duration-200 ${domainDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {domainDropdownOpen && domainList.length > 0 && (
+                  <div className="absolute top-full right-0 mt-1.5 w-full min-w-[200px] bg-bg-primary/95 backdrop-blur-xl border border-border-subtle rounded-xl shadow-2xl shadow-black/40 z-50 overflow-hidden animate-fade-in-up">
+                    <div className="max-h-[240px] overflow-y-auto py-1">
+                      {publicDomains.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] text-text-muted/40">
+                            {d.publicDomain || 'Public'}
+                          </div>
+                          {publicDomains.map((dom: any) => (
+                            <button
+                              key={dom.id}
+                              type="button"
+                              onClick={() => { setSelectedDomainId(dom.id); setDomainDropdownOpen(false); }}
+                              className={`w-full text-left px-3 py-2 text-sm font-mono transition-all cursor-pointer flex items-center gap-2 ${
+                                activeDomainId === dom.id
+                                  ? 'bg-brand/10 text-brand font-semibold'
+                                  : 'text-text-primary hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <Globe className="w-3 h-3 shrink-0 text-text-muted/50" />
+                              <span className="truncate">{dom.domainName}</span>
+                              {activeDomainId === dom.id && <Check className="w-3 h-3 ml-auto shrink-0 text-brand" />}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {verifiedCustomDomains.length > 0 && (
+                        <>
+                          {publicDomains.length > 0 && <div className="border-t border-border-subtle my-1" />}
+                          <div className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] text-text-muted/40">
+                            {d.customDomain || 'Custom'}
+                          </div>
+                          {verifiedCustomDomains.map((dom: any) => (
+                            <button
+                              key={dom.id}
+                              type="button"
+                              onClick={() => { setSelectedDomainId(dom.id); setDomainDropdownOpen(false); }}
+                              className={`w-full text-left px-3 py-2 text-sm font-mono transition-all cursor-pointer flex items-center gap-2 ${
+                                activeDomainId === dom.id
+                                  ? 'bg-brand/10 text-brand font-semibold'
+                                  : 'text-text-primary hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              <ShieldCheck className="w-3 h-3 shrink-0 text-emerald-400/70" />
+                              <span className="truncate">{dom.name}</span>
+                              {activeDomainId === dom.id && <Check className="w-3 h-3 ml-auto shrink-0 text-brand" />}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </select>
+              </div>
+            </div>
+
+            {/* Validation feedback + character counter */}
+            <div className="flex items-center justify-between mt-1.5 min-h-[18px]">
+              {usernameError ? (
+                <p className="text-[11px] text-red-400 font-medium flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                  {usernameError}
+                </p>
+              ) : createUsername ? (
+                <p className="text-[11px] text-emerald-400/70 font-medium flex items-center gap-1">
+                  <Check className="w-3 h-3 shrink-0" />
+                  Valid
+                </p>
+              ) : <span />}
+              {createUsername && (
+                <span className={`text-[11px] font-mono ${createUsername.length > 25 ? 'text-amber-400' : 'text-text-muted/50'}`}>
+                  {createUsername.length}/30
+                </span>
+              )}
             </div>
           </div>
 
@@ -628,7 +750,7 @@ export function MailboxList({ dict }: MailboxListProps) {
               username: createUsername || undefined,
               domainId: activeDomainId || undefined,
             } as any)}
-            disabled={createMailbox.isPending || domainList.length === 0}
+            disabled={createMailbox.isPending || domainList.length === 0 || !!usernameError}
             className="w-full py-3 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4" />

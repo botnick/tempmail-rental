@@ -31,7 +31,7 @@ export function AdminRbacContent({ dict }: AdminRbacProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.rbac}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.rbac}</h1>
         <p className="text-sm text-text-muted">{a.rbacSubtitle}</p>
       </div>
 
@@ -217,7 +217,7 @@ function RolesTab({
         {roles.isLoading ? (
           <div className="p-4"><SkeletonTable rows={6} /></div>
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             {roles.data?.map((role) => (
               <button
                 key={role.id}
@@ -623,7 +623,7 @@ function PermissionsTab({ a, ui }: { a: Record<string, string>; ui: Record<strin
         ) : Object.keys(filtered).length === 0 ? (
           <EmptyState icon={<Key className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             {Object.entries(filtered).map(([mod, items]) => (
               <div key={mod}>
                 <div className="px-4 py-2.5 bg-white/[0.02] flex items-center gap-2">
@@ -731,7 +731,7 @@ function UserRolesTab({ a, ui }: { a: Record<string, string>; ui: Record<string,
         ) : users.length === 0 ? (
           <EmptyState icon={<Users className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[1.5fr_1fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>{a.users}</span>
               <span>{a.rbacRoles}</span>

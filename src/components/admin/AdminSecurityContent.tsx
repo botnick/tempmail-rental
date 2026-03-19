@@ -41,7 +41,7 @@ export function AdminSecurityContent({ dict }: AdminSecurityProps) {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.security}</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.security}</h1>
           <p className="text-sm text-text-muted">{a.securitySubtitle}</p>
         </div>
         <button
@@ -83,7 +83,7 @@ export function AdminSecurityContent({ dict }: AdminSecurityProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<Shield className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>Time</span>
               <span>Type / User</span>

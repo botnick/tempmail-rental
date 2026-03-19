@@ -2,6 +2,7 @@
 
 import { trpc } from '@/lib/trpc';
 import { SkeletonTable } from '@/components/ui/Skeleton';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   ArrowLeft, Mail, Paperclip, Copy, Check, Download,
   FileText, Code, Clock, MoreVertical,
@@ -82,6 +83,7 @@ function ActionsMenu({
 
   return (
     <div className="relative z-50" ref={menuRef}>
+      <Tooltip text="Actions" position="left">
       <button
         onClick={() => setOpen(!open)}
         className="w-9 h-9 rounded-xl flex items-center justify-center text-text-muted/50 hover:text-text-primary hover:bg-white/[0.06] transition-all cursor-pointer border border-transparent hover:border-white/[0.06]"
@@ -89,6 +91,7 @@ function ActionsMenu({
       >
         <MoreVertical className="w-5 h-5" />
       </button>
+      </Tooltip>
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-44 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl shadow-black/50 py-1.5 z-50 animate-fade-in-up">
@@ -188,12 +191,14 @@ interface MessageViewContentProps {
   dict: {
     mailboxes: Record<string, string>;
     ui: Record<string, string>;
+    tooltips: Record<string, string>;
   };
   locale: string;
 }
 
 export function MessageViewContent({ messageId, dict, locale }: MessageViewContentProps) {
   const d = dict.mailboxes;
+  const tips = dict.tooltips ?? {};
   const router = useRouter();
   const searchParams = useSearchParams();
   const mailboxId = searchParams.get('mb') || '';
@@ -263,6 +268,7 @@ export function MessageViewContent({ messageId, dict, locale }: MessageViewConte
   return (
     <div className="w-full animate-fade-in-up">
       {/* Back button */}
+      <Tooltip text={tips.backToInbox} position="right">
       <Link
         href={`/${locale}/dashboard/mailboxes`}
         className="inline-flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors mb-4 sm:mb-6 lg:mb-8 group"
@@ -270,6 +276,7 @@ export function MessageViewContent({ messageId, dict, locale }: MessageViewConte
         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
         {d.backToInbox}
       </Link>
+      </Tooltip>
 
       {msgDetail.isLoading ? (
         <div className="bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-10">
@@ -282,11 +289,14 @@ export function MessageViewContent({ messageId, dict, locale }: MessageViewConte
         </div>
       ) : (
         <div className="bg-white/[0.02] backdrop-blur-xl border border-border-subtle rounded-xl sm:rounded-2xl overflow-hidden shadow-xl shadow-black/5">
+          {/* ── Gradient accent stripe ── */}
+          <div className="h-1 bg-gradient-to-r from-brand via-amber-500/80 to-brand/60" />
+
           {/* ── Header ── */}
-          <div className="px-4 pt-4 pb-4 sm:px-6 sm:pt-6 sm:pb-5 lg:px-8 lg:pt-8 lg:pb-7 border-b border-white/[0.05]">
+          <div className="px-4 pt-5 pb-4 sm:px-6 sm:pt-7 sm:pb-5 lg:px-8 lg:pt-8 lg:pb-6">
             {/* Top bar: subject + actions menu */}
-            <div className="flex items-start justify-between gap-3 mb-4 sm:mb-5 lg:mb-6 relative z-50">
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-text-primary leading-tight tracking-tight break-words flex-1">
+            <div className="flex items-start justify-between gap-3 mb-5 sm:mb-6 relative z-50">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-extrabold text-text-primary leading-snug tracking-tight break-words flex-1">
                 {decodeMIME(detail.subject) || d.noSubject}
               </h1>
               <ActionsMenu
@@ -297,37 +307,43 @@ export function MessageViewContent({ messageId, dict, locale }: MessageViewConte
               />
             </div>
 
-            {/* Meta row — stacks on mobile */}
+            {/* Sender card */}
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div className="flex items-start gap-3.5 sm:gap-4 min-w-0 bg-white/[0.025] border border-white/[0.05] rounded-xl px-4 py-3.5 flex-1">
                 {/* Avatar */}
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-brand/25 to-brand/10 flex items-center justify-center shrink-0 ring-2 ring-brand/10 ring-offset-2 ring-offset-transparent">
-                  <span className="text-sm sm:text-base font-extrabold text-brand">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-brand/30 to-amber-500/20 flex items-center justify-center shrink-0 ring-2 ring-brand/15 shadow-lg shadow-brand/5">
+                  <span className="text-sm sm:text-base font-black text-brand drop-shadow-sm">
                     {(detail.from || '?')[0].toUpperCase()}
                   </span>
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  {/* Sender email + copy */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm sm:text-base font-semibold text-text-primary truncate max-w-[200px] sm:max-w-none">{decodeMIME(detail.from || '')}</p>
+                    <span className="text-[11px] font-semibold text-text-muted/50 uppercase tracking-wider">From</span>
+                    <p className="text-sm sm:text-[15px] font-bold text-text-primary truncate max-w-[240px] sm:max-w-none">{decodeMIME(detail.from || '')}</p>
+                    <Tooltip text={tips.copySender} position="top">
                     <button
                       onClick={handleCopyFrom}
-                      className="shrink-0 p-1.5 rounded-md text-text-muted/30 hover:text-text-secondary hover:bg-white/[0.04] transition-all cursor-pointer"
+                      className="shrink-0 p-1 rounded-md text-text-muted/30 hover:text-brand hover:bg-brand/10 transition-all cursor-pointer"
                       title={d.copyEmail}
                     >
-                      {copied ? <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-400" /> : <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
+                    </Tooltip>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <p className="text-xs sm:text-sm text-text-muted flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-text-muted/40" />
-                      {dayjs(detail.receivedAt).format('YYYY-MM-DD HH:mm')}
-                      <span className="text-text-muted/40 ml-1">({dayjs(detail.receivedAt).fromNow()})</span>
-                    </p>
+                  {/* Date */}
+                  <div className="flex items-center gap-1.5 text-xs text-text-muted/60">
+                    <Clock className="w-3 h-3 text-text-muted/35" />
+                    <span>{dayjs(detail.receivedAt).format('YYYY-MM-DD HH:mm')}</span>
+                    <span className="text-text-muted/30">·</span>
+                    <span className="text-text-muted/40">{dayjs(detail.receivedAt).fromNow()}</span>
                   </div>
+                  {/* Recipient */}
                   {detail.to && (
-                    <p className="text-xs text-text-muted/50 mt-0.5 truncate">
-                      To: <span className="font-mono text-[11px]">{detail.to}</span>
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-text-muted/50 uppercase tracking-wider">To</span>
+                      <p className="text-[12px] font-mono text-text-muted/60 truncate">{detail.to}</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -335,22 +351,29 @@ export function MessageViewContent({ messageId, dict, locale }: MessageViewConte
               {/* View mode toggle */}
               {hasHtml && hasText && (
                 <div className="flex items-center gap-1 bg-white/[0.04] rounded-xl p-1 shrink-0 border border-white/[0.04] self-start">
+                  <Tooltip text={tips.viewHtml} position="bottom">
                   <button
                     onClick={() => setViewMode('html')}
                     className={`px-3 py-1.5 text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-medium ${viewMode === 'html' ? 'bg-brand/20 text-brand font-bold shadow-sm' : 'text-text-muted hover:text-text-secondary hover:bg-white/[0.03]'}`}
                   >
                     <Code className="w-3.5 h-3.5" />{d.htmlView}
                   </button>
+                  </Tooltip>
+                  <Tooltip text={tips.viewText} position="bottom">
                   <button
                     onClick={() => setViewMode('text')}
                     className={`px-3 py-1.5 text-xs rounded-lg transition-all cursor-pointer flex items-center gap-1.5 font-medium ${viewMode === 'text' ? 'bg-brand/20 text-brand font-bold shadow-sm' : 'text-text-muted hover:text-text-secondary hover:bg-white/[0.03]'}`}
                   >
                     <FileText className="w-3.5 h-3.5" />{d.textPlain}
                   </button>
+                  </Tooltip>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Divider */}
+          <div className="mx-4 sm:mx-6 lg:mx-8 border-t border-white/[0.04]" />
 
           {/* ── Body ── */}
           <div className="p-3 sm:p-5 lg:p-8">

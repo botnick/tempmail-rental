@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton';
 import { Wallet, ArrowUpRight, ArrowDownLeft, CreditCard, Receipt } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useState } from 'react';
 import { formatDate } from '@/lib/dayjs';
 
@@ -13,12 +14,14 @@ interface BillingContentProps {
   dict: {
     billing: Record<string, string>;
     ui: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
 export function BillingContent({ dict }: BillingContentProps) {
   const d = dict.billing;
   const ui = dict.ui;
+  const tips = dict.tooltips ?? {};
   const toast = useToast();
 
   const [page, setPage] = useState(1);
@@ -43,13 +46,13 @@ export function BillingContent({ dict }: BillingContentProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
         <p className="text-sm text-text-muted">{d.subtitle}</p>
       </div>
 
       {/* Balance Card */}
       <div className="bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-2xl p-6 mb-6 animate-fade-in-up delay-1">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-success to-accent-teal flex items-center justify-center shadow-lg">
               <Wallet className="w-6 h-6 text-white" />
@@ -59,10 +62,11 @@ export function BillingContent({ dict }: BillingContentProps) {
               {wallet.isLoading ? (
                 <div className="w-24 h-8 bg-white/[0.04] rounded-lg animate-pulse mt-1" />
               ) : (
-                <p className="text-3xl font-extrabold text-text-primary tracking-tight">฿{Number(wallet.data?.balance ?? 0).toLocaleString()}</p>
+                <p className="text-2xl sm:text-3xl font-extrabold text-text-primary tracking-tight">฿{Number(wallet.data?.balance ?? 0).toLocaleString()}</p>
               )}
             </div>
           </div>
+          <Tooltip text={tips.topup} position="bottom">
           <button
             onClick={() => setShowTopup(true)}
             className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all duration-300 flex items-center gap-2 cursor-pointer"
@@ -70,6 +74,7 @@ export function BillingContent({ dict }: BillingContentProps) {
             <CreditCard className="w-4 h-4" />
             {d.topup}
           </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -115,9 +120,13 @@ export function BillingContent({ dict }: BillingContentProps) {
       {/* Pagination */}
       {(ledger.data?.total ?? 0) > 20 && (
         <div className="flex items-center justify-center gap-2 mt-4">
+          <Tooltip text={tips.prevPage} position="top">
           <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.prev}</button>
+          </Tooltip>
           <span className="text-xs text-text-muted">{ui.page} {page}</span>
+          <Tooltip text={tips.nextPage} position="top">
           <button onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 text-xs font-medium text-text-muted border border-border-subtle rounded-lg hover:bg-white/[0.04] disabled:opacity-30 cursor-pointer">{ui.next}</button>
+          </Tooltip>
         </div>
       )}
 

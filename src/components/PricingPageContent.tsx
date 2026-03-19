@@ -44,7 +44,7 @@ const PALETTES = [
 ];
 
 const FEATURED_STYLE = {
-  card: 'bg-gradient-to-br from-brand to-amber shadow-2xl shadow-brand/20 scale-[1.03] border border-brand/30',
+  card: 'bg-gradient-to-br from-brand to-amber shadow-2xl shadow-brand/20 md:scale-[1.03] border border-brand/30',
   check: 'from-brand to-coral',
   cta: 'text-white bg-gradient-to-r from-brand to-amber hover:shadow-lg hover:shadow-brand/30 hover:-translate-y-0.5',
 };

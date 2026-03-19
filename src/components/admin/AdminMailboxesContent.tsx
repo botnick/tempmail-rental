@@ -169,7 +169,7 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
             ) : msgs.length === 0 ? (
               <EmptyState icon={<Mail className="w-6 h-6" />} title={a.noMessages ?? 'No messages'} description="" />
             ) : (
-              <div className="divide-y divide-white/[0.04]">
+              <div className="divide-y divide-white/[0.04] overflow-x-auto">
                 {/* Table Header */}
                 <div className="grid grid-cols-[auto_2fr_3fr_1fr] gap-4 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
                   <span className="w-2"></span>
@@ -233,7 +233,7 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.mailboxes}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.mailboxes}</h1>
         <p className="text-sm text-text-muted">{a.mailboxesSubtitle}</p>
       </div>
 
@@ -265,7 +265,7 @@ export function AdminMailboxesContent({ dict }: AdminMailboxesProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<Mail className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>Address</span>
               <span>{a.owner}</span>

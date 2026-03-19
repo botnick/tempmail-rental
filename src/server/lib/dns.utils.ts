@@ -10,8 +10,8 @@
  * @module dns.utils
  */
 
-import dns from 'node:dns';
 import { Resolver } from 'node:dns/promises';
+import { ConfigService } from '../services/config.service';
 
 // ─── Configuration (from env, with safe defaults) ──────────────────
 
@@ -61,7 +61,6 @@ export interface DnsVerifyResult {
 export interface DnsCheckResult {
   ownership: { found: boolean; error?: string };
   mx: { found: boolean; pointsToUs: boolean; error?: string };
-  spf: { found: boolean; includesUs: boolean; error?: string };
 }
 
 // ─── Resolver Factory ──────────────────────────────────────────────
@@ -95,7 +94,7 @@ export async function lookupTxt(hostname: string): Promise<DnsLookupResult> {
       resolver.resolveTxt(hostname),
       DNS_TIMEOUT_MS,
     );
-    // resolveTxt returns string[][] — flatten: [['v=spf1 ...']] → ['v=spf1 ...']
+    // resolveTxt returns string[][] — flatten: [['some-value ...']] → ['some-value ...']
     const records = result.map((chunks) => chunks.join(''));
     recordSuccess();
     return { found: records.length > 0, data: records };
@@ -156,15 +155,15 @@ export async function verifyOwnership(
 
 /**
  * Check if MX records point to our mail server.
+ * Fetches expected hostnames from the mail server API (multi-node aware).
  */
 export async function checkMxRecord(domainName: string): Promise<{
   found: boolean;
   pointsToUs: boolean;
   error?: string;
 }> {
-  const appHost = getAppHost();
-  // Must match the MX record the frontend instructs users to create: mx.${appHost}
-  const expectedMx = `mx.${appHost}`.toLowerCase();
+  const serverInfo = await getMailServerInfo();
+  const expectedHostnames = serverInfo.nodes.map((n) => n.hostname.toLowerCase());
   const result = await lookupMx(domainName);
 
   if (result.error) {
@@ -175,46 +174,23 @@ export async function checkMxRecord(domainName: string): Promise<{
     return { found: false, pointsToUs: false };
   }
 
-  const pointsToUs = result.data.some((exchange) => exchange === expectedMx);
+  // MX points to us if ANY of our node hostnames match
+  const pointsToUs = result.data.some((exchange) =>
+    expectedHostnames.includes(exchange),
+  );
   return { found: true, pointsToUs };
 }
 
-/**
- * Check if SPF record includes our mail server.
- * Looks for `include:_spf.<appHost>` in the SPF TXT record.
- * Must match the frontend instruction: `v=spf1 include:_spf.<appHost> ~all`
- */
-export async function checkSpfRecord(domainName: string): Promise<{
-  found: boolean;
-  includesUs: boolean;
-  error?: string;
-}> {
-  const appHost = getAppHost();
-  const result = await lookupTxt(domainName);
-
-  if (result.error) {
-    return { found: false, includesUs: false, error: result.error };
-  }
-
-  const spfRecord = result.data.find((r) => r.startsWith('v=spf1'));
-  if (!spfRecord) {
-    return { found: false, includesUs: false };
-  }
-
-  // Must match what frontend tells users: include:_spf.${appHost}
-  const includesUs = spfRecord.includes(`include:_spf.${appHost}`);
-  return { found: true, includesUs };
-}
 
 /**
- * Run all DNS checks for a domain (ownership, MX, SPF).
+ * Run all DNS checks for a domain (ownership, MX).
  * Each check is independent — one failure does not block others.
  */
 export async function checkAllDns(
   domainName: string,
   ownershipToken?: string,
 ): Promise<DnsCheckResult> {
-  const [ownership, mx, spf] = await Promise.all([
+  const [ownership, mx] = await Promise.all([
     ownershipToken
       ? verifyOwnership(domainName, ownershipToken).then((r) => ({
           found: r.verified,
@@ -222,17 +198,70 @@ export async function checkAllDns(
         }))
       : Promise.resolve({ found: false, error: 'No verification token' }),
     checkMxRecord(domainName),
-    checkSpfRecord(domainName),
   ]);
 
-  return { ownership, mx, spf };
+  return { ownership, mx };
+}
+
+// ─── Mail Server Info Cache ────────────────────────────────────────
+
+interface MailServerInfo {
+  hostname: string;
+  ip: string;
+  nodes: Array<{ hostname: string; ip: string; region: string; priority: number }>;
+}
+
+let cachedServerInfo: MailServerInfo | null = null;
+let cacheExpiry = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch mail server info from the Go backend API.
+ * Cached for 5 minutes. Falls back to env-based defaults if unavailable.
+ */
+export async function getMailServerInfo(): Promise<MailServerInfo> {
+  if (cachedServerInfo && Date.now() < cacheExpiry) {
+    return cachedServerInfo;
+  }
+
+  const apiUrl = await ConfigService.get('tempmail.api_url');
+  if (apiUrl) {
+    try {
+      const res = await fetch(`${apiUrl}/api/server-info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        cachedServerInfo = {
+          hostname: data.hostname || '',
+          ip: data.ip || '',
+          nodes: (data.nodes || []).map((n: any, i: number) => ({
+            hostname: n.hostname?.toLowerCase() || '',
+            ip: n.ip || '',
+            region: n.region || '',
+            priority: (i + 1) * 10,
+          })),
+        };
+        cacheExpiry = Date.now() + CACHE_TTL_MS;
+        return cachedServerInfo;
+      }
+    } catch {
+      // Fall through to defaults
+    }
+  }
+
+  // Fallback — no mail server API available
+  return {
+    hostname: 'mail.tempmail.dev',
+    ip: '0.0.0.0',
+    nodes: [],
+  };
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
 
 /**
- * Get the app host from env. Falls back to window.location.host (should not
- * reach that path on server). Never hardcoded.
+ * Get the app host from env. Used for non-mail-server purposes.
  */
 export function getAppHost(): string {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -275,7 +304,7 @@ function handleDnsError(err: any): DnsLookupResult {
   const code = err.code || '';
 
   // Expected DNS "not found" errors — not a failure
-  if (code === 'ENODATA' || code === 'ENOTFOUND' || code === dns.NODATA || code === dns.NOTFOUND) {
+  if (code === 'ENODATA' || code === 'ENOTFOUND') {
     recordSuccess(); // Not a resolver failure
     return { found: false, data: [] };
   }

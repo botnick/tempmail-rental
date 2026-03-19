@@ -45,7 +45,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
 
       {/* Panel */}
       <div
-        className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden animate-fade-in-up`}
+        className={`relative ${maxWidth} w-full rounded-2xl overflow-hidden animate-fade-in-up max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-4rem)] flex flex-col`}
         style={{
           background: 'linear-gradient(170deg, #201a16 0%, #120e0c 100%)',
           boxShadow: '0 0 0 1px rgba(249,115,22,0.08), 0 0 40px -8px rgba(249,115,22,0.1), 0 32px 80px -16px rgba(0,0,0,0.85)',
@@ -56,7 +56,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
 
         {/* Header */}
         {title && (
-          <div className="flex items-start justify-between px-6 pt-5 pb-0">
+          <div className="flex items-start justify-between px-4 sm:px-6 pt-5 pb-0 shrink-0">
             <div>
               <h2 className="text-base font-bold text-text-primary">{title}</h2>
               {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
@@ -72,7 +72,7 @@ export function Modal({ open, onClose, title, subtitle, children, maxWidth = 'ma
         )}
 
         {/* Body */}
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-4 sm:px-6 py-5 overflow-y-auto">{children}</div>
 
         {/* Bottom subtle gradient */}
         <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />

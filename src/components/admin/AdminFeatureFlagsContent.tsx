@@ -355,7 +355,7 @@ export function AdminFeatureFlagsContent({ dict }: AdminFeatureFlagsProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.featureFlags}</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.featureFlags}</h1>
           <p className="text-sm text-text-muted">{a.featureFlagsSubtitle}</p>
         </div>
         <button onClick={openCreate}
@@ -390,7 +390,7 @@ export function AdminFeatureFlagsContent({ dict }: AdminFeatureFlagsProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<Flag className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             {items.map((flag: any) => (
               <div key={flag.id} className="p-4 hover:bg-white/[0.02] transition-all group">
                 <div className="flex items-start justify-between gap-4">

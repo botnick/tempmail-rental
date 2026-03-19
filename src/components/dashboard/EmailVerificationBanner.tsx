@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X, Loader2, Mail } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { trpc } from '@/lib/trpc';
 
 interface EmailVerificationBannerProps {
@@ -9,10 +10,12 @@ interface EmailVerificationBannerProps {
     verifyBanner?: string;
     verifyBannerAction?: string;
     verifyBannerSent?: string;
+    tooltips?: Record<string, string>;
   };
 }
 
 export function EmailVerificationBanner({ dict }: EmailVerificationBannerProps) {
+  const tips = (dict as any).tooltips ?? {};
   const me = trpc.auth.me.useQuery();
   const requestVerification = trpc.auth.requestEmailVerification.useMutation();
   const [dismissed, setDismissed] = useState(false);
@@ -41,6 +44,7 @@ export function EmailVerificationBanner({ dict }: EmailVerificationBannerProps) 
           : (dict.verifyBanner || 'Your email is not verified. Please verify to unlock all features.')}
       </span>
       {!sent && (
+        <Tooltip text={tips.verifyEmail} position="bottom">
         <button
           onClick={handleResend}
           disabled={requestVerification.isPending}
@@ -53,7 +57,9 @@ export function EmailVerificationBanner({ dict }: EmailVerificationBannerProps) 
           )}
           {dict.verifyBannerAction || 'Verify Now'}
         </button>
+        </Tooltip>
       )}
+      <Tooltip text={tips.dismissBanner} position="left">
       <button
         onClick={() => setDismissed(true)}
         className="shrink-0 p-1 rounded-lg hover:bg-amber/20 text-amber/50 hover:text-amber transition-colors"
@@ -61,6 +67,7 @@ export function EmailVerificationBanner({ dict }: EmailVerificationBannerProps) 
       >
         <X className="w-3.5 h-3.5" />
       </button>
+      </Tooltip>
     </div>
   );
 }

@@ -30,10 +30,10 @@ export function AdminDashboardContent({ dict }: AdminDashboardProps) {
 
   return (
     <div>
-      <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.dashboard}</h1>
+      <div className="mb-6 sm:mb-8 animate-fade-in-up">
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.dashboard}</h1>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {stats.isLoading
           ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
           : cards.map((c, i) => <StatCard key={c.label} icon={c.icon} label={c.label} value={c.value} gradient={c.gradient} index={i} />)
@@ -41,7 +41,7 @@ export function AdminDashboardContent({ dict }: AdminDashboardProps) {
       </div>
 
       {/* ─── Signup Trend Chart ─── */}
-      <div className="mt-8 bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-2xl p-6 animate-fade-in-up delay-2">
+      <div className="mt-6 sm:mt-8 bg-white/[0.025] backdrop-blur-xl border border-border-subtle rounded-2xl p-4 sm:p-6 animate-fade-in-up delay-2">
         <div className="flex items-center gap-2 mb-6">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-amber flex items-center justify-center">
             <TrendingUp className="w-4 h-4 text-white" />

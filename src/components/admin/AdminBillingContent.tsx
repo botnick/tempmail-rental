@@ -36,7 +36,7 @@ export function AdminBillingContent({ dict }: AdminBillingProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.billing}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.billing}</h1>
         <p className="text-sm text-text-muted">{a.billingSubtitle}</p>
       </div>
 
@@ -73,7 +73,7 @@ export function AdminBillingContent({ dict }: AdminBillingProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<CreditCard className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>Date</span>
               <span>Reference</span>

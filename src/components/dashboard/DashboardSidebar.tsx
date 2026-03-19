@@ -6,9 +6,11 @@ import { trpc } from '@/lib/trpc';
 import { BRAND } from '@/config/ui';
 import {
   LayoutDashboard, Mail, Globe, CreditCard, Settings,
-  ShieldCheck, LogOut, ChevronRight,
+  ShieldCheck, LogOut, ChevronRight, X,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { useMobileMenu } from '@/components/providers/MobileMenuProvider';
 
 const ADMIN_ROLES = ['SYSTEM_ADMIN', 'ADMIN'];
 
@@ -17,6 +19,7 @@ interface DashboardSidebarProps {
   dict: {
     nav: Record<string, string>;
     common: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
@@ -24,6 +27,8 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
   const pathname = usePathname();
   const me = trpc.auth.me.useQuery(undefined, { retry: false });
   const Logo = BRAND.Logo;
+  const { isOpen, close } = useMobileMenu();
+  const tips = dict.tooltips ?? {};
 
   const roles: string[] = (me.data as any)?.roles ?? [];
   const hasAdminAccess = roles.some((r) => ADMIN_ROLES.includes(r));
@@ -51,8 +56,9 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
     }
   };
 
-  return (
-    <aside className="w-60 bg-base/95 backdrop-blur-2xl border-r border-border-subtle p-5 flex flex-col relative z-10 shrink-0">
+  /* ── Sidebar inner content (shared for desktop & mobile) ── */
+  const sidebarContent = (
+    <>
       {/* Logo */}
       <Link href={`/${locale}`} className="flex items-center gap-2.5 mb-8 group">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-amber flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-lg shadow-brand/15">
@@ -127,6 +133,7 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
         <div className="px-3 py-1">
           <ThemeToggle />
         </div>
+        <Tooltip text={tips.logout} position="right">
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-text-muted/60 hover:text-danger hover:bg-danger/5 transition-all duration-200 w-full cursor-pointer"
@@ -134,7 +141,41 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
           <LogOut className="w-[18px] h-[18px]" />
           <span className="font-medium">{dict.common.logout}</span>
         </button>
+        </Tooltip>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Desktop Sidebar (≥ md) ── */}
+      <aside className="hidden md:flex w-60 bg-base/95 backdrop-blur-2xl border-r border-border-subtle p-5 flex-col relative z-10 shrink-0">
+        {sidebarContent}
+      </aside>
+
+      {/* ── Mobile Slide-over (< md) ── */}
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={close}
+          />
+          {/* Drawer */}
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-base border-r border-border-subtle p-5 flex flex-col animate-slide-in-right overflow-y-auto">
+            {/* Close button */}
+            <Tooltip text={tips.closeSidebar} position="right">
+            <button
+              onClick={close}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-text-muted/60 hover:text-text-primary hover:bg-white/[0.06] transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            </Tooltip>
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

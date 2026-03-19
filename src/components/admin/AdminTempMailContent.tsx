@@ -122,7 +122,7 @@ export function AdminTempMailContent({ dict }: AdminTempMailProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-8 animate-fade-in-up">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.tempMail}</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.tempMail}</h1>
           <p className="text-sm text-text-muted">{a.tempMailSubtitle}</p>
         </div>
 

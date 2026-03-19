@@ -6,6 +6,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SkeletonCard, SkeletonRow } from '@/components/ui/Skeleton';
 import { Mail, Globe, Wallet, MessageSquare, Plus, ArrowUpRight, TrendingUp, Clock, Inbox, Flame } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useState } from 'react';
 
 interface DashboardContentProps {
@@ -13,11 +14,13 @@ interface DashboardContentProps {
   dict: {
     dashboard: Record<string, string>;
     common: Record<string, string>;
+    tooltips: Record<string, string>;
   };
 }
 
 export function DashboardContent({ locale, dict }: DashboardContentProps) {
   const d = dict.dashboard;
+  const tips = dict.tooltips ?? {};
   const toast = useToast();
   const [username, setUsername] = useState('');
 
@@ -52,7 +55,7 @@ export function DashboardContent({ locale, dict }: DashboardContentProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{d.title}</h1>
         <p className="text-sm text-text-muted">{d.welcome}</p>
       </div>
 
@@ -85,6 +88,7 @@ export function DashboardContent({ locale, dict }: DashboardContentProps) {
                 id="quick-create-username"
               />
             </div>
+            <Tooltip text={tips.quickCreate} position="bottom">
             <button
               onClick={handleQuickCreate}
               disabled={createMailbox.isPending}
@@ -94,6 +98,7 @@ export function DashboardContent({ locale, dict }: DashboardContentProps) {
               <Plus className="w-3.5 h-3.5" />
               {dict.common.create ?? d.quickCreate}
             </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -109,6 +114,7 @@ export function DashboardContent({ locale, dict }: DashboardContentProps) {
             </span>
           </div>
           <p className="text-xs text-text-muted mb-4">{mailboxes.data?.total ?? 0}/3 {d.statMailboxes}</p>
+          <Tooltip text={tips.upgrade} position="bottom">
           <a
             href={`/${locale}/pricing`}
             className="w-full py-2.5 text-sm font-semibold text-brand border border-brand/25 rounded-xl hover:bg-brand/8 hover:border-brand/40 transition-all duration-300 flex items-center justify-center gap-1.5"
@@ -116,6 +122,7 @@ export function DashboardContent({ locale, dict }: DashboardContentProps) {
             <ArrowUpRight className="w-3.5 h-3.5" />
             {dict.common.upgrade ?? 'Upgrade'}
           </a>
+          </Tooltip>
         </div>
       </div>
 

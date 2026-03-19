@@ -110,7 +110,7 @@ function PagesTab({ dict }: AdminSeoProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<FileText className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>Page</span><span>Locale</span><span>Status</span><span>Updated</span><span>Actions</span>
             </div>
@@ -305,7 +305,7 @@ function FaqTab({ dict }: AdminSeoProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<HelpCircle className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             {items.map((item: any) => (
               <div key={item.id} className="p-4 hover:bg-white/[0.02] transition-all">
                 <div className="flex items-start justify-between gap-4">
@@ -473,7 +473,7 @@ function RedirectsTab({ dict }: AdminSeoProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<ArrowRightLeft className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             <div className="grid grid-cols-[2fr_2fr_1fr_auto] gap-4 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-muted/60">
               <span>Source</span><span>Destination</span><span>Type</span><span />
             </div>
@@ -639,7 +639,7 @@ function AnswersTab({ dict }: AdminSeoProps) {
         ) : items.length === 0 ? (
           <EmptyState icon={<MessageSquareText className="w-6 h-6" />} title={ui.noResults} description="" />
         ) : (
-          <div className="divide-y divide-white/[0.04]">
+          <div className="divide-y divide-white/[0.04] overflow-x-auto">
             {items.map((item: any) => (
               <div key={item.id} className="p-4 hover:bg-white/[0.02] transition-all">
                 <div className="flex items-start justify-between gap-4">
@@ -777,7 +777,7 @@ export function AdminSeoContent({ dict }: AdminSeoProps) {
   return (
     <div>
       <div className="mb-8 animate-fade-in-up">
-        <h1 className="text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.seo}</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight mb-1 text-text-primary">{a.seo}</h1>
         <p className="text-sm text-text-muted">{a.seoSubtitle}</p>
       </div>
 

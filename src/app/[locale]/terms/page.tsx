@@ -42,7 +42,7 @@ export default async function TermsPage({ params }: { params: Promise<{ locale: 
               <FileText className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-text-primary">เงื่อนไขการใช้งาน</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text-primary">เงื่อนไขการใช้งาน</h1>
               <p className="text-xs text-text-muted">Terms of Service</p>
             </div>
           </div>

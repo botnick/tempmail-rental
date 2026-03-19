@@ -7,8 +7,9 @@ import { BRAND } from '@/config/ui';
 import {
   LayoutDashboard, Users, Mail, Globe, CreditCard,
   Shield, Flag, FileText, ScrollText, ArrowLeft,
-  Package, LogOut, Search,
+  Package, LogOut, Search, X,
 } from 'lucide-react';
+import { useMobileMenu } from '@/components/providers/MobileMenuProvider';
 
 /**
  * Admin nav items with role-based access control.
@@ -19,85 +20,19 @@ const ALL_ADMIN_ROLES = ['SYSTEM_ADMIN', 'ADMIN'];
 
 function getAdminNavItems(locale: string, dict: Record<string, string>) {
   return [
-    {
-      href: `/${locale}/admin`,
-      icon: LayoutDashboard,
-      label: dict.dashboard,
-      roles: ALL_ADMIN_ROLES,
-      exact: true,
-    },
-    {
-      href: `/${locale}/admin/users`,
-      icon: Users,
-      label: dict.users,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/mailboxes`,
-      icon: Mail,
-      label: dict.mailboxes,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/domains`,
-      icon: Globe,
-      label: dict.domains,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/tempmail`,
-      icon: Mail,
-      label: dict.tempMail || 'TempMail API',
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/plans`,
-      icon: Package,
-      label: dict.plans,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/billing`,
-      icon: CreditCard,
-      label: dict.billing,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/security`,
-      icon: Shield,
-      label: dict.security,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/feature-flags`,
-      icon: Flag,
-      label: dict.featureFlags,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/cms`,
-      icon: FileText,
-      label: dict.cms,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/seo`,
-      icon: Search,
-      label: dict.seo ?? 'SEO',
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/audit`,
-      icon: ScrollText,
-      label: dict.audit,
-      roles: ALL_ADMIN_ROLES,
-    },
-    {
-      href: `/${locale}/admin/rbac`,
-      icon: Shield,
-      label: dict.rbac ?? 'RBAC',
-      roles: ALL_ADMIN_ROLES,
-    },
+    { href: `/${locale}/admin`, icon: LayoutDashboard, label: dict.dashboard, roles: ALL_ADMIN_ROLES, exact: true },
+    { href: `/${locale}/admin/users`, icon: Users, label: dict.users, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/mailboxes`, icon: Mail, label: dict.mailboxes, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/domains`, icon: Globe, label: dict.domains, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/tempmail`, icon: Mail, label: dict.tempMail || 'TempMail API', roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/plans`, icon: Package, label: dict.plans, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/billing`, icon: CreditCard, label: dict.billing, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/security`, icon: Shield, label: dict.security, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/feature-flags`, icon: Flag, label: dict.featureFlags, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/cms`, icon: FileText, label: dict.cms, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/seo`, icon: Search, label: dict.seo ?? 'SEO', roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/audit`, icon: ScrollText, label: dict.audit, roles: ALL_ADMIN_ROLES },
+    { href: `/${locale}/admin/rbac`, icon: Shield, label: dict.rbac ?? 'RBAC', roles: ALL_ADMIN_ROLES },
   ];
 }
 
@@ -113,6 +48,7 @@ export function AdminSidebar({ locale, dict }: AdminSidebarProps) {
   const pathname = usePathname();
   const me = trpc.auth.me.useQuery(undefined, { retry: false });
   const AdminLogo = BRAND.adminLogo;
+  const { isOpen, close } = useMobileMenu();
 
   const roles: string[] = (me.data as any)?.roles ?? [];
   const isSystemAdmin = roles.includes('SYSTEM_ADMIN');
@@ -138,8 +74,9 @@ export function AdminSidebar({ locale, dict }: AdminSidebarProps) {
     }
   };
 
-  return (
-    <aside className="w-64 bg-base/95 backdrop-blur-2xl border-r border-border-subtle p-5 flex flex-col relative z-10 shrink-0">
+  /* ── Sidebar inner content (shared for desktop & mobile) ── */
+  const sidebarContent = (
+    <>
       {/* Admin Logo */}
       <div className="mb-8">
         <Link href={`/${locale}/admin`} className="flex items-center gap-2.5 group mb-1">
@@ -202,6 +139,37 @@ export function AdminSidebar({ locale, dict }: AdminSidebarProps) {
           <span className="font-medium">{dict.common.logout}</span>
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Desktop Sidebar (≥ md) ── */}
+      <aside className="hidden md:flex w-64 bg-base/95 backdrop-blur-2xl border-r border-border-subtle p-5 flex-col relative z-10 shrink-0">
+        {sidebarContent}
+      </aside>
+
+      {/* ── Mobile Slide-over (< md) ── */}
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={close}
+          />
+          {/* Drawer */}
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-base border-r border-border-subtle p-5 flex flex-col animate-slide-in-right overflow-y-auto">
+            {/* Close button */}
+            <button
+              onClick={close}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-text-muted/60 hover:text-text-primary hover:bg-white/[0.06] transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
