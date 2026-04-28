@@ -45,16 +45,31 @@ const GUEST_PLAN_SLUG = 'guest';
 export async function getAnonUserId(): Promise<string> {
   if (_anonUserIdCache) return _anonUserIdCache;
 
-  const user = await prisma.user.upsert({
-    where: { email: ANON_EMAIL },
-    update: {},
-    create: {
-      email: ANON_EMAIL,
-      displayName: 'Anonymous',
-      status: 'SUSPENDED', // Login is impossible — this row is a tenant ghost.
-      metadata: { system: true, role: 'guest_owner' } as object,
-    },
-  });
+  // Race-safe singleton resolution: try findUnique first, then create on miss
+  // catching P2002 (unique violation) for the race where two concurrent
+  // requests both saw no row and both tried to insert. Prisma's `upsert` is
+  // not atomic against concurrent inserts on the same unique key.
+  let user = await prisma.user.findUnique({ where: { email: ANON_EMAIL } });
+  if (!user) {
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: ANON_EMAIL,
+          displayName: 'Anonymous',
+          status: 'SUSPENDED',
+          metadata: { system: true, role: 'guest_owner' } as object,
+        },
+      });
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'P2002') {
+        // Another request just inserted it — fetch their row.
+        user = await prisma.user.findUnique({ where: { email: ANON_EMAIL } });
+        if (!user) throw err;
+      } else {
+        throw err;
+      }
+    }
+  }
 
   // Ensure the anon user has an ACTIVE subscription to the `guest` Plan
   // so plan-feature lookups resolve via the standard pathway.
@@ -68,16 +83,21 @@ export async function getAnonUserId(): Promise<string> {
     where: { userId: user.id, status: 'ACTIVE' },
   });
   if (!existingSub) {
-    await prisma.subscription.create({
-      data: {
-        userId: user.id,
-        planId: guestPlan.id,
-        status: 'ACTIVE',
-        currentPeriodStart: new Date(),
-        // Far-future "period end" for a permanent system subscription.
-        currentPeriodEnd: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
-      },
-    });
+    try {
+      await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          planId: guestPlan.id,
+          status: 'ACTIVE',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
+        },
+      });
+    } catch (err) {
+      // Another concurrent caller may have just inserted a duplicate ACTIVE
+      // subscription. Treat as already-done.
+      if ((err as { code?: string })?.code !== 'P2002') throw err;
+    }
   }
 
   _anonUserIdCache = user.id;

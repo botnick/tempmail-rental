@@ -44,3 +44,6 @@ next-env.d.ts
 
 # mailserver (separate repo)
 /mailserver
+
+# Claude Code local settings (per-machine permission grants etc.)
+.claude/

@@ -3,16 +3,17 @@
 /**
  * Anonymous inbox — landing-page hero.
  *
- * Receives an initial mailbox from the server component (already created via
- * ensureGuestMailbox) and then takes over on the client:
- *   - Shows address with copy button
- *   - Polls `mailbox.getMessages` every 10s + subscribes via SSE for real-time
- *   - Click message → expand + auto mark-seen
+ * On mount, calls /api/guest/bootstrap which (1) reads/issues the signed
+ * `guest_token` cookie, and (2) returns either an existing active mailbox
+ * or a freshly minted one. Cannot bootstrap server-side from the page
+ * because Next 16 forbids cookie mutation outside Route Handlers.
+ *
+ * Once we have a mailbox:
+ *   - Show address + copy
+ *   - Poll messages every 10s + subscribe via SSE for real-time pushes
+ *   - Click message → expand
  *   - "ลบและสร้างใหม่" → delete + auto-create new
  *   - "ยืดเวลา" → extendTTL +24h
- *
- * No login required. Uses `guestOrAuthedProcedure` under the hood — the
- * `guest_token` cookie is sent automatically with every fetch.
  */
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -30,24 +31,52 @@ interface InitialMailbox {
 interface Props {
   locale: string;
   dict: any;
-  initialMailbox: InitialMailbox;
 }
 
-export function GuestInbox({ locale, dict, initialMailbox }: Props) {
-  const [activeMailboxId, setActiveMailboxId] = useState(initialMailbox.publicId);
-  const [activeAddress, setActiveAddress] = useState(initialMailbox.address);
-  const [activeExpiresAt, setActiveExpiresAt] = useState<string | null>(
-    initialMailbox.expiresAt
-  );
+export function GuestInbox({ locale, dict }: Props) {
+  const [mailbox, setMailbox] = useState<InitialMailbox | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
-  // Poll messages — short interval; SSE will trigger immediate refetch on push.
+  // Bootstrap once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/guest/bootstrap', {
+      method: 'GET',
+      credentials: 'same-origin',
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.detail ?? body.error ?? `HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setMailbox({
+          publicId: data.mailbox.publicId,
+          address: data.mailbox.address,
+          expiresAt: data.mailbox.expiresAt,
+          status: data.mailbox.status,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setBootstrapError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const messages = trpc.mailbox.getMessages.useQuery(
-    { mailboxId: activeMailboxId },
+    { mailboxId: mailbox?.publicId ?? '' },
     {
+      enabled: !!mailbox?.publicId,
       refetchInterval: 10_000,
       staleTime: 8_000,
     }
@@ -55,37 +84,55 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
 
   const createMailbox = trpc.mailbox.create.useMutation({
     onSuccess: (m) => {
-      setActiveMailboxId(m.id);
-      setActiveAddress(m.address);
-      setActiveExpiresAt(m.expiresAt ? new Date(m.expiresAt as any).toISOString() : null);
+      setMailbox({
+        publicId: m.id,
+        address: m.address,
+        expiresAt: m.expiresAt ? new Date(m.expiresAt as any).toISOString() : null,
+        status: m.status,
+      });
       utils.mailbox.list.invalidate();
     },
   });
 
   const deleteMailbox = trpc.mailbox.delete.useMutation({
     onSuccess: () => {
-      // Auto-create a new mailbox after deletion so user is never empty-handed.
-      createMailbox.mutate({});
+      // Re-bootstrap after delete so a new mailbox + cookie roll happens
+      // through the route handler, keeping the cookie list in sync.
+      fetch('/api/guest/bootstrap', { method: 'POST', credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.mailbox) {
+            setMailbox({
+              publicId: data.mailbox.publicId,
+              address: data.mailbox.address,
+              expiresAt: data.mailbox.expiresAt,
+              status: data.mailbox.status,
+            });
+          }
+        });
     },
   });
 
   const extendTTL = trpc.mailbox.extendTTL.useMutation({
     onSuccess: (r) => {
-      if (r.expiresAt) {
-        setActiveExpiresAt(new Date(r.expiresAt as any).toISOString());
+      if (r.expiresAt && mailbox) {
+        setMailbox({
+          ...mailbox,
+          expiresAt: new Date(r.expiresAt as any).toISOString(),
+        });
       }
     },
   });
 
-  // ── SSE wiring ─────────────────────────────────
+  // ── SSE wiring (only after we have a mailbox) ──────────
   const sseRef = useRef<EventSource | null>(null);
   useEffect(() => {
-    if (!activeMailboxId) return;
-    const url = `/api/tempmail/sse?mailboxId=${encodeURIComponent(activeMailboxId)}`;
+    if (!mailbox?.publicId) return;
+    const url = `/api/tempmail/sse?mailboxId=${encodeURIComponent(mailbox.publicId)}`;
     const es = new EventSource(url, { withCredentials: true });
     sseRef.current = es;
     es.addEventListener('new_message', () => {
-      utils.mailbox.getMessages.invalidate({ mailboxId: activeMailboxId });
+      utils.mailbox.getMessages.invalidate({ mailboxId: mailbox.publicId });
     });
     es.onerror = () => {
       // Browser auto-reconnects; nothing else to do.
@@ -94,7 +141,7 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
       es.close();
       sseRef.current = null;
     };
-  }, [activeMailboxId, utils]);
+  }, [mailbox?.publicId, utils]);
 
   // Countdown
   const [now, setNow] = useState(() => Date.now());
@@ -102,13 +149,14 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
     const t = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(t);
   }, []);
-  const minutesLeft = activeExpiresAt
-    ? Math.max(0, Math.round((new Date(activeExpiresAt).getTime() - now) / 60_000))
+  const minutesLeft = mailbox?.expiresAt
+    ? Math.max(0, Math.round((new Date(mailbox.expiresAt).getTime() - now) / 60_000))
     : null;
 
   const onCopy = async () => {
+    if (!mailbox?.address) return;
     try {
-      await navigator.clipboard.writeText(activeAddress);
+      await navigator.clipboard.writeText(mailbox.address);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
@@ -116,8 +164,28 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
     }
   };
 
-  const items = messages.data ?? [];
   const t = dict.home ?? {};
+  const items = messages.data ?? [];
+
+  // ── Loading / error states ────────────────────────────
+  if (bootstrapError) {
+    return (
+      <section className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 mt-8">
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-300">
+          ระบบเมลกำลังปรับปรุงชั่วคราว ลองรีเฟรชอีกครั้ง — {bootstrapError}
+        </div>
+      </section>
+    );
+  }
+  if (!mailbox) {
+    return (
+      <section className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 mt-8">
+        <div className="rounded-2xl border border-brand/20 bg-bg-elevated/60 p-6 text-center text-text-secondary">
+          กำลังเตรียมกล่องจดหมาย…
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 mt-8">
@@ -136,7 +204,7 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <code className="flex-1 font-mono text-base sm:text-lg text-text-primary truncate select-all">
-            {activeAddress}
+            {mailbox.address}
           </code>
           <button
             type="button"
@@ -151,7 +219,7 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
         <div className="flex items-center gap-2 mt-4 text-xs">
           <button
             type="button"
-            onClick={() => extendTTL.mutate({ mailboxId: activeMailboxId, hours: 24 })}
+            onClick={() => extendTTL.mutate({ mailboxId: mailbox.publicId, hours: 24 })}
             disabled={extendTTL.isPending}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary disabled:opacity-40"
           >
@@ -160,7 +228,7 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
           </button>
           <button
             type="button"
-            onClick={() => deleteMailbox.mutate({ mailboxId: activeMailboxId })}
+            onClick={() => deleteMailbox.mutate({ mailboxId: mailbox.publicId })}
             disabled={deleteMailbox.isPending || createMailbox.isPending}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/10 text-text-secondary hover:text-red-400 disabled:opacity-40"
           >
@@ -178,7 +246,7 @@ export function GuestInbox({ locale, dict, initialMailbox }: Props) {
           </h2>
           <button
             type="button"
-            onClick={() => utils.mailbox.getMessages.invalidate({ mailboxId: activeMailboxId })}
+            onClick={() => utils.mailbox.getMessages.invalidate({ mailboxId: mailbox.publicId })}
             className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${messages.isFetching ? 'animate-spin' : ''}`} />

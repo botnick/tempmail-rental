@@ -10,14 +10,7 @@ import { CmsService } from '@/server/services/cms.service';
 import { FaqBlock } from '@/components/blocks/FaqBlock';
 import { AnswerBlock } from '@/components/blocks/AnswerBlock';
 import { unstable_cache } from 'next/cache';
-import { ensureGuestMailbox } from '@/server/lib/guest-bootstrap';
 import { GuestInbox } from './_components/GuestInbox';
-
-// The landing page bootstraps a per-visitor guest mailbox via cookies,
-// so it must be SSR — cannot be statically prerendered. CMS content is
-// still cached via unstable_cache below; only the per-request guest cookie
-// section is dynamic.
-export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -60,15 +53,9 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
     ['landing-answers', locale],
     { tags: ['cms-content'], revalidate: 3600 }
   );
-  const [faqItems, answerBlocks, guest] = await Promise.all([
+  const [faqItems, answerBlocks] = await Promise.all([
     getCachedFaq(),
     getCachedAnswers(),
-    ensureGuestMailbox().catch((err) => {
-      // If the guest mailbox creation fails (e.g. Go backend down), still
-      // render the marketing page; we just won't have an inbox to show.
-      console.error('[home] ensureGuestMailbox failed:', err);
-      return null;
-    }),
   ]);
 
   return (
@@ -156,31 +143,13 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           })}
         </div>
 
-        {/* Live anonymous inbox — anyone landing here gets a real working
-            mailbox without signing up. Falls back to the static marketing
-            card only when the Go backend is unavailable. */}
-        {guest ? (
-          <div className="animate-fade-in-up delay-5 w-full">
-            <GuestInbox
-              locale={locale}
-              dict={dict}
-              initialMailbox={{
-                publicId: guest.mailbox.publicId,
-                address: guest.mailbox.address,
-                expiresAt: guest.mailbox.expiresAt
-                  ? guest.mailbox.expiresAt.toISOString()
-                  : null,
-                status: guest.mailbox.status,
-              }}
-            />
-          </div>
-        ) : (
-          <div className="animate-fade-in-up delay-5 w-full max-w-xl">
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-300">
-              ระบบเมลกำลังปรับปรุงชั่วคราว ลองรีเฟรชอีกครั้ง หรือใช้งานผ่านแดชบอร์ดสำหรับสมาชิก
-            </div>
-          </div>
-        )}
+        {/* Live anonymous inbox. The component calls /api/guest/bootstrap on
+            mount to issue/refresh the guest_token cookie and get an active
+            mailbox — RSC pages can't write cookies in Next 16 so the
+            bootstrap has to happen via a Route Handler. */}
+        <div className="animate-fade-in-up delay-5 w-full">
+          <GuestInbox locale={locale} dict={dict} />
+        </div>
       </main>
 
       {/* Features */}
