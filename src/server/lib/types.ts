@@ -1,6 +1,6 @@
 export type { Env } from '../config/env';
 
-/** Actor context available in every request */
+/** Actor context available in every request (authenticated user). */
 export interface Actor {
   userId: string;
   publicId: string;
@@ -9,6 +9,29 @@ export interface Actor {
   permissions: string[];
   planSlug: string | null;
 }
+
+/**
+ * Subject — resolved acting principal for guest-or-authed flows.
+ * Either a real user (`kind: 'user'`) or an anonymous guest (`kind: 'guest'`).
+ *
+ * Guests have ownership proven by the cookie's `mailboxOwnerIds` (mailbox publicIds);
+ * authed users own anything where mailbox.userId === userId.
+ */
+export type Subject =
+  | {
+      kind: 'user';
+      userId: string;
+      publicId: string;
+      tenantId: string;
+      mailboxOwnerIds: null;
+    }
+  | {
+      kind: 'guest';
+      userId: string;
+      publicId: string;
+      tenantId: string;
+      mailboxOwnerIds: ReadonlyArray<string>;
+    };
 
 /** Pagination params */
 export interface PaginationInput {

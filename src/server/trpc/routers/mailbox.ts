@@ -1,44 +1,64 @@
 import { z } from 'zod';
-import { router, protectedProcedure } from '../trpc';
-import { MailboxService, createMailboxSchema, listMailboxesSchema } from '../../services/mailbox.service';
+import {
+  router,
+  protectedProcedure,
+  guestOrAuthedProcedure,
+  rateLimitedGuestOrAuthedProcedure,
+} from '../trpc';
+import {
+  MailboxService,
+  createMailboxSchema,
+  listMailboxesSchema,
+} from '../../services/mailbox.service';
 
 export const mailboxRouter = router({
-  create: protectedProcedure
+  /**
+   * Create a mailbox.
+   * - Authed user: uses their plan's quotas + retention.
+   * - Guest: 1 active mailbox, 1h retention, scoped to the guest cookie.
+   *
+   * The route handler that calls this (or the homepage server component) is
+   * responsible for appending the new mailbox.publicId into the guest cookie
+   * via `addMailboxToPayload` + Set-Cookie.
+   */
+  create: rateLimitedGuestOrAuthedProcedure('guest.mailbox.create')
     .input(createMailboxSchema)
     .mutation(async ({ input, ctx }) => {
-      return MailboxService.create(input, ctx.actor, {
+      return MailboxService.createBySubject(input, ctx.subject, {
         ip: ctx.ip ?? undefined,
         requestId: ctx.requestId,
       });
     }),
 
-  list: protectedProcedure
+  list: guestOrAuthedProcedure
     .input(listMailboxesSchema)
     .query(async ({ input, ctx }) => {
-      return MailboxService.listByUser(ctx.actor.userId, input);
+      return MailboxService.listBySubject(ctx.subject, input);
     }),
 
-  getMessages: protectedProcedure
+  getMessages: rateLimitedGuestOrAuthedProcedure('guest.mailbox.read')
     .input(z.object({ mailboxId: z.string() }))
     .query(async ({ input, ctx }) => {
-      return MailboxService.getMessages(input.mailboxId, ctx.actor.userId);
+      return MailboxService.getMessagesBySubject(input.mailboxId, ctx.subject);
     }),
 
-  delete: protectedProcedure
+  delete: guestOrAuthedProcedure
     .input(z.object({ mailboxId: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      await MailboxService.delete(input.mailboxId, ctx.actor, {
+      const result = await MailboxService.deleteBySubject(input.mailboxId, ctx.subject, {
         requestId: ctx.requestId,
       });
-      return { success: true };
+      return { success: true, publicId: result.publicId };
     }),
 
-  extendTTL: protectedProcedure
-    .input(z.object({
-      mailboxId: z.string(),
-      hours: z.number().int().min(1).max(720),
-    }))
+  extendTTL: guestOrAuthedProcedure
+    .input(
+      z.object({
+        mailboxId: z.string(),
+        hours: z.number().int().min(1).max(720),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
-      return MailboxService.extendTTL(input.mailboxId, input.hours, ctx.actor);
+      return MailboxService.extendTTLBySubject(input.mailboxId, input.hours, ctx.subject);
     }),
 });

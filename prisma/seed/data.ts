@@ -90,9 +90,32 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
 };
 
 // ── Plans ────────────────────────────────────────
+// Tier metadata (tierName/tierColor/tierIcon) is the user-facing "Rank" badge
+// rebrand of the underlying Plan. Stored on Plan rows so admin can edit
+// without code changes; consumed by RankBadge component.
 export const PLANS = [
   {
+    // System plan — assigned to the singleton anonymous user that owns guest mailboxes.
+    // No pricing, not user-selectable. Tunable in DB by admin.
+    slug: 'guest', name: 'Guest', description: 'Anonymous browsing — no signup',
+    isDefault: false, sortOrder: -1, trialDays: 0,
+    tierName: 'Guest', tierColor: '#64748b', tierIcon: 'eye',
+    features: [
+      { key: 'max_mailboxes', value: '1', valueType: 'number' },
+      { key: 'retention_hours', value: '1', valueType: 'number' },
+      { key: 'custom_domain_access', value: 'false', valueType: 'boolean' },
+      { key: 'alias_count', value: '0', valueType: 'number' },
+      { key: 'custom_username_access', value: 'false', valueType: 'boolean' },
+      { key: 'max_message_size_mb', value: '2', valueType: 'number' },
+      { key: 'message_rate_per_min', value: '10', valueType: 'number' },
+      { key: 'api_access', value: 'false', valueType: 'boolean' },
+      { key: 'mfa_access', value: 'false', valueType: 'boolean' },
+    ],
+    pricing: [],
+  },
+  {
     slug: 'free', name: 'Free', description: 'เริ่มต้นใช้งานอีเมลชั่วคราวฟรี', isDefault: true, sortOrder: 0, trialDays: 0,
+    tierName: 'Bronze', tierColor: '#CD7F32', tierIcon: 'shield',
     features: [
       { key: 'max_mailboxes', value: '3', valueType: 'number' },
       { key: 'retention_hours', value: '24', valueType: 'number' },
@@ -100,6 +123,7 @@ export const PLANS = [
       { key: 'alias_count', value: '0', valueType: 'number' },
       { key: 'custom_username_access', value: 'false', valueType: 'boolean' },
       { key: 'max_message_size_mb', value: '5', valueType: 'number' },
+      { key: 'message_rate_per_min', value: '30', valueType: 'number' },
       { key: 'api_access', value: 'false', valueType: 'boolean' },
       { key: 'mfa_access', value: 'false', valueType: 'boolean' },
     ],
@@ -110,6 +134,7 @@ export const PLANS = [
   },
   {
     slug: 'starter', name: 'Starter', description: 'สำหรับผู้ใช้ที่ต้องการมากกว่า', isDefault: false, sortOrder: 1, trialDays: 7,
+    tierName: 'Silver', tierColor: '#C0C0C0', tierIcon: 'star',
     features: [
       { key: 'max_mailboxes', value: '10', valueType: 'number' },
       { key: 'retention_hours', value: '168', valueType: 'number' },
@@ -117,6 +142,7 @@ export const PLANS = [
       { key: 'alias_count', value: '3', valueType: 'number' },
       { key: 'custom_username_access', value: 'true', valueType: 'boolean' },
       { key: 'max_message_size_mb', value: '15', valueType: 'number' },
+      { key: 'message_rate_per_min', value: '120', valueType: 'number' },
       { key: 'api_access', value: 'false', valueType: 'boolean' },
       { key: 'mfa_access', value: 'true', valueType: 'boolean' },
     ],
@@ -129,6 +155,7 @@ export const PLANS = [
   },
   {
     slug: 'pro', name: 'Pro', description: 'สำหรับนักพัฒนาและทีมขนาดเล็ก', isDefault: false, sortOrder: 2, trialDays: 14,
+    tierName: 'Gold', tierColor: '#FFD700', tierIcon: 'crown',
     features: [
       { key: 'max_mailboxes', value: '50', valueType: 'number' },
       { key: 'retention_hours', value: '720', valueType: 'number' },
@@ -136,6 +163,7 @@ export const PLANS = [
       { key: 'alias_count', value: '10', valueType: 'number' },
       { key: 'custom_username_access', value: 'true', valueType: 'boolean' },
       { key: 'max_message_size_mb', value: '50', valueType: 'number' },
+      { key: 'message_rate_per_min', value: '600', valueType: 'number' },
       { key: 'api_access', value: 'true', valueType: 'boolean' },
       { key: 'mfa_access', value: 'true', valueType: 'boolean' },
     ],
@@ -148,6 +176,7 @@ export const PLANS = [
   },
   {
     slug: 'enterprise', name: 'Enterprise', description: 'สำหรับองค์กรที่ต้องการระบบครบวงจร', isDefault: false, sortOrder: 3, trialDays: 30,
+    tierName: 'Platinum', tierColor: '#E5E4E2', tierIcon: 'gem',
     features: [
       { key: 'max_mailboxes', value: '500', valueType: 'number' },
       { key: 'retention_hours', value: '8760', valueType: 'number' },
@@ -155,6 +184,7 @@ export const PLANS = [
       { key: 'alias_count', value: '100', valueType: 'number' },
       { key: 'custom_username_access', value: 'true', valueType: 'boolean' },
       { key: 'max_message_size_mb', value: '100', valueType: 'number' },
+      { key: 'message_rate_per_min', value: '6000', valueType: 'number' },
       { key: 'api_access', value: 'true', valueType: 'boolean' },
       { key: 'mfa_access', value: 'true', valueType: 'boolean' },
     ],

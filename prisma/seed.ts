@@ -76,10 +76,20 @@ async function seedPlans() {
   const planMap = new Map<string, string>();
   for (const p of PLANS) {
     const plan = await prisma.plan.upsert({
-      where: { slug: p.slug }, update: {},
+      where: { slug: p.slug },
+      update: {
+        // Refresh tier presentation on every seed run so admins editing
+        // PLANS in source see the change reflected immediately.
+        tierName: (p as any).tierName ?? null,
+        tierColor: (p as any).tierColor ?? null,
+        tierIcon: (p as any).tierIcon ?? null,
+      },
       create: {
         slug: p.slug, name: p.name, description: p.description,
         isDefault: p.isDefault, sortOrder: p.sortOrder, trialDays: p.trialDays, status: 'ACTIVE',
+        tierName: (p as any).tierName ?? null,
+        tierColor: (p as any).tierColor ?? null,
+        tierIcon: (p as any).tierIcon ?? null,
         features: { create: p.features.map(f => ({ featureKey: f.key, value: f.value, valueType: f.valueType })) },
         pricing: { create: p.pricing.map(pr => ({ currency: pr.currency, amount: pr.amount, billingPeriod: pr.billingPeriod })) },
       },

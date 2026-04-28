@@ -245,6 +245,31 @@ export const TempMailService = {
     return this._fetch<TempAttachmentDownload>(`/v1/attachment/${attachmentId}`);
   },
 
+  /**
+   * Fetch attachment raw bytes from Go backend.
+   * First gets the presigned URL, then follows the redirect to download.
+   * Used during webhook ingest to mirror attachments into our R2 bucket.
+   */
+  async fetchAttachmentBlob(attachmentId: string): Promise<{
+    bytes: Buffer;
+    filename: string;
+    contentType: string;
+    size: number;
+  }> {
+    const meta = await this.getAttachmentUrl(attachmentId);
+    const response = await fetch(meta.downloadUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download attachment ${attachmentId}: ${response.status}`);
+    }
+    const arr = await response.arrayBuffer();
+    return {
+      bytes: Buffer.from(arr),
+      filename: meta.filename,
+      contentType: meta.contentType,
+      size: meta.sizeBytes,
+    };
+  },
+
   // ─── Domain Endpoints ───────────────────────────────────────
 
   /** GET /v1/domains — list with optional search, status filter, pagination */

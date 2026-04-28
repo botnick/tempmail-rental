@@ -5,6 +5,7 @@ import type { PermissionKey } from '../policy/permissions';
 import { hasPermission, isAdmin } from '../policy/rbac';
 import { logger } from '../lib/logger';
 import { env } from '../config/env';
+import { getAnonUserId } from '../lib/guest-session';
 
 /**
  * tRPC initialization with superjson transformer (supports Date, BigInt, etc.)
@@ -175,6 +176,106 @@ export function rateLimitedProcedure(policyKey: string) {
  */
 export function rateLimitedProtectedProcedure(policyKey: string) {
   return rateLimitedProcedure(policyKey).use(authMiddleware);
+}
+
+// ─── Guest-or-Authed Procedure ──────────────────
+
+import type { Subject } from '../lib/types';
+export type { Subject };
+
+const guestOrAuthedMiddleware = middleware(async ({ ctx, next }) => {
+  if (ctx.actor) {
+    const subject: Subject = {
+      kind: 'user',
+      userId: ctx.actor.userId,
+      publicId: ctx.actor.publicId,
+      tenantId: ctx.actor.userId,
+      mailboxOwnerIds: null,
+    };
+    return next({ ctx: { ...ctx, subject } });
+  }
+
+  if (ctx.guest) {
+    const anonUserId = await getAnonUserId();
+    const subject: Subject = {
+      kind: 'guest',
+      userId: anonUserId,
+      publicId: ctx.guest.gid,
+      tenantId: ctx.guest.gid,
+      mailboxOwnerIds: ctx.guest.mailboxIds,
+    };
+    return next({ ctx: { ...ctx, subject } });
+  }
+
+  throw new TRPCError({
+    code: 'UNAUTHORIZED',
+    message: 'No session or guest cookie',
+  });
+});
+
+/**
+ * Guest-or-authed procedure — accepts either a logged-in user OR a valid guest cookie.
+ *
+ * Adds `ctx.subject` (see `Subject`). Use `assertMailboxOwnership(ctx.subject, mailbox)`
+ * to authorise per-mailbox actions.
+ */
+export const guestOrAuthedProcedure = t.procedure
+  .use(loggerMiddleware)
+  .use(guestOrAuthedMiddleware);
+
+/**
+ * Throw FORBIDDEN if the subject does not own the given mailbox.
+ *
+ * - Authed users: ownership is via mailbox.userId === subject.userId.
+ * - Guests: ownership is via mailbox.publicId being in the guest's cookie list.
+ */
+export function assertMailboxOwnership(
+  subject: Subject,
+  mailbox: { userId: string; publicId: string } | null | undefined
+): asserts mailbox {
+  if (!mailbox) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Mailbox not found' });
+  }
+  if (subject.kind === 'user') {
+    if (mailbox.userId !== subject.userId) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Mailbox not found' });
+    }
+    return;
+  }
+  // guest
+  if (!subject.mailboxOwnerIds.includes(mailbox.publicId)) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Mailbox not found' });
+  }
+}
+
+/** Rate-limited variant of guestOrAuthedProcedure. Keys by gid for guests, userId for users. */
+export function rateLimitedGuestOrAuthedProcedure(policyKey: string) {
+  return t.procedure
+    .use(loggerMiddleware)
+    .use(
+      middleware(async ({ ctx, next }) => {
+        if (!env.RATE_LIMIT_ENABLED) return next({ ctx });
+        try {
+          const { getRedis } = await import('../lib/redis');
+          const { checkRateLimit, enforceRateLimit, RATE_LIMIT_POLICIES } = await import(
+            '../middleware/rate-limit'
+          );
+          const policy = RATE_LIMIT_POLICIES[policyKey] ?? RATE_LIMIT_POLICIES['api.general'];
+          const identifier =
+            ctx.actor?.userId ?? ctx.guest?.gid ?? ctx.ip ?? 'unknown';
+          const result = await checkRateLimit(getRedis(), `${policyKey}:${identifier}`, policy);
+          enforceRateLimit(result);
+        } catch (err: unknown) {
+          if (err instanceof TRPCError && err.code === 'TOO_MANY_REQUESTS') throw err;
+          logger.warn('Rate limit check failed — allowing request', {
+            policyKey,
+            errorMessage: (err as Error)?.message,
+          });
+        }
+        return next({ ctx });
+      })
+    )
+    .use(guestOrAuthedMiddleware);
 }
 
 export type TRPCRouter = typeof router;

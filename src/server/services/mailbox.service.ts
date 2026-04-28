@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { NotFoundError, QuotaExceededError, ConflictError } from '../lib/errors';
 import { AuditService } from './audit.service';
-import type { Actor } from '../lib/types';
+import type { Actor, Subject } from '../lib/types';
 import { nanoid } from 'nanoid';
 import { MailboxStatus, DomainStatus, SubscriptionStatus } from '@prisma/client';
 import { TempMailService } from './tempmail.service';
@@ -45,27 +45,57 @@ export const MailboxService = {
   /**
    * Create a new mailbox.
    * Checks plan quotas before creation — all limits come from DB.
+   *
+   * `meta.tenantId` overrides the Go-backend tenant id (defaults to actor.userId).
+   * For anonymous guest mailboxes, pass tenantId = guestGid so Go-side rate limits
+   * key on the guest, not on the singleton anonymous owner row.
+   *
+   * `meta.guestGid`, when present, is stored in mailbox.metadata for abuse tracing.
    */
   async create(
     input: z.infer<typeof createMailboxSchema>,
     actor: Actor,
-    meta?: { ip?: string; requestId?: string }
+    meta?: {
+      ip?: string;
+      requestId?: string;
+      tenantId?: string;
+      guestGid?: string;
+      /** When set, count current mailboxes by these publicIds instead of by actor.userId.
+       * Used for guests so quota is per-cookie (per-gid), not per-anon-user (which is global). */
+      countByPublicIds?: ReadonlyArray<string>;
+    }
   ) {
-    // 1. Resolve user's plan limits from DB
+    // 1. Resolve plan limits from DB. For the singleton anonymous user this
+    //    resolves to the `guest` plan's features (seeded). Authed users get
+    //    their actual subscription's plan features.
     const planLimits = await this.getUserPlanLimits(actor.userId);
 
-    // 2. Check mailbox quota
-    const currentCount = await prisma.mailbox.count({
-      where: { userId: actor.userId, status: { notIn: [MailboxStatus.DELETED] } },
-    });
+    const maxMailboxesRaw = planLimits.get(FEATURE_KEYS.MAX_MAILBOXES);
+    const retentionHoursRaw = planLimits.get(FEATURE_KEYS.RETENTION_HOURS);
+    if (maxMailboxesRaw == null || retentionHoursRaw == null) {
+      // No plan feature found — refuse to fall back to magic numbers.
+      throw new Error(
+        `Plan features not configured for user ${actor.userId}: missing ${FEATURE_KEYS.MAX_MAILBOXES} or ${FEATURE_KEYS.RETENTION_HOURS}. Seed plan features.`
+      );
+    }
+    const maxMailboxes = Number(maxMailboxesRaw);
+    const retentionHours = Number(retentionHoursRaw);
 
-    const maxMailboxes = Number(planLimits.get(FEATURE_KEYS.MAX_MAILBOXES) ?? 3);
+    // 2. Check mailbox quota — scope by cookie for guests, by userId for users.
+    const currentCount = meta?.countByPublicIds
+      ? await prisma.mailbox.count({
+          where: {
+            publicId: { in: [...meta.countByPublicIds] },
+            status: { notIn: [MailboxStatus.DELETED] },
+          },
+        })
+      : await prisma.mailbox.count({
+          where: { userId: actor.userId, status: { notIn: [MailboxStatus.DELETED] } },
+        });
+
     if (currentCount >= maxMailboxes) {
       throw new QuotaExceededError('mailboxes');
     }
-
-    // 3. Determine retention/expiry from plan
-    const retentionHours = Number(planLimits.get(FEATURE_KEYS.RETENTION_HOURS) ?? 24);
 
     // Check if domainId is a local custom domain (lookup by publicId in DB)
     let externalDomainId = input.domainId;
@@ -109,10 +139,11 @@ export const MailboxService = {
 
     // 4. Call TempMail API to create the mailbox
     // domainId here is the EXTERNAL API's domain ID (from /v1/domains)
+    const tenantId = meta?.tenantId ?? actor.userId;
     const tempMailData = await TempMailService.createMailbox(
       input.username || undefined,
       externalDomainId || undefined,
-      actor.userId,
+      tenantId,
       retentionHours
     );
 
@@ -157,7 +188,9 @@ export const MailboxService = {
         domainId: localDomain.id,
         expiresAt,
         status: MailboxStatus.ACTIVE,
-        metadata: { externalId: tempMailData.id },
+        metadata: meta?.guestGid
+          ? { externalId: tempMailData.id, guestGid: meta.guestGid }
+          : { externalId: tempMailData.id },
       },
     });
 
@@ -485,5 +518,227 @@ export const MailboxService = {
     }
 
     return limits;
+  },
+
+  // ─── Guest-aware variants ────────────────────────
+  // These accept a Subject (authed user OR guest cookie) and enforce ownership
+  // via the cookie's mailboxOwnerIds for guests, or mailbox.userId for users.
+
+  /**
+   * Create a mailbox for the given subject. Returns the new mailbox publicId so
+   * the caller (route handler) can append it to the guest cookie.
+   *
+   * For guests we reuse the existing `create()` by synthesising an Actor that
+   * points at the singleton anonymous user. The Go-backend tenantId is the gid
+   * so per-guest rate limits apply on the mail server side.
+   */
+  /**
+   * Create a mailbox for a Subject (guest or authed user).
+   *
+   * For guests, limits & retention are pulled from the `guest` Plan in DB
+   * (seeded once; admin-tunable). The mailbox quota count is scoped to the
+   * cookie's mailboxOwnerIds — NOT to userId — because the singleton anonymous
+   * user is shared across every guest globally and we must not aggregate.
+   *
+   * No hardcoded numbers — everything is plan-driven.
+   */
+  async createBySubject(
+    input: z.infer<typeof createMailboxSchema>,
+    subject: Subject,
+    meta?: { ip?: string; requestId?: string }
+  ) {
+    const actor: Actor = {
+      userId: subject.userId,
+      publicId: subject.publicId,
+      email: '',
+      roles: [],
+      permissions: [],
+      planSlug: null,
+    };
+    return this.create(input, actor, {
+      ip: meta?.ip,
+      requestId: meta?.requestId,
+      tenantId: subject.tenantId,
+      guestGid: subject.kind === 'guest' ? subject.publicId : undefined,
+      // For guests, scope the quota count by the cookie's mailboxOwnerIds so
+      // they don't share a global counter with every other guest. The limit
+      // value itself comes from the `guest` Plan's PlanFeature (max_mailboxes).
+      countByPublicIds: subject.kind === 'guest' ? subject.mailboxOwnerIds : undefined,
+    });
+  },
+
+  /** Lookup a mailbox by publicId; throw NotFoundError if subject does not own it. */
+  async _findOwned(mailboxPublicId: string, subject: Subject) {
+    const mailbox = await prisma.mailbox.findUnique({
+      where: { publicId: mailboxPublicId },
+    });
+    if (!mailbox) throw new NotFoundError('Mailbox');
+
+    if (subject.kind === 'user') {
+      if (mailbox.userId !== subject.userId) throw new NotFoundError('Mailbox');
+    } else {
+      // guest: ownership is proven by cookie membership
+      if (!subject.mailboxOwnerIds.includes(mailbox.publicId)) {
+        throw new NotFoundError('Mailbox');
+      }
+    }
+    return mailbox;
+  },
+
+  /**
+   * List mailboxes owned by a subject.
+   * Authed users: by mailbox.userId.
+   * Guests: by `mailbox.publicId IN cookie.mailboxIds` — no ANON_USER_ID broad scan.
+   */
+  async listBySubject(subject: Subject, input: z.infer<typeof listMailboxesSchema>) {
+    if (subject.kind === 'user') {
+      return this.listByUser(subject.userId, input);
+    }
+    // Guest: filter strictly by mailboxOwnerIds (publicIds) from the cookie.
+    const ids = [...subject.mailboxOwnerIds];
+    if (ids.length === 0) {
+      return { data: [], total: 0, page: input.page, pageSize: input.pageSize, totalPages: 0 };
+    }
+    const where = {
+      publicId: { in: ids },
+      ...(input.status
+        ? { status: input.status as MailboxStatus }
+        : { status: { not: MailboxStatus.DELETED } }),
+    };
+    const [data, total] = await Promise.all([
+      prisma.mailbox.findMany({
+        where,
+        skip: (input.page - 1) * input.pageSize,
+        take: input.pageSize,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          domain: { select: { name: true } },
+          _count: { select: { messages: true } },
+        },
+      }),
+      prisma.mailbox.count({ where }),
+    ]);
+    return {
+      data: data.map((m) => ({
+        id: m.publicId,
+        address: m.address,
+        domain: m.domain?.name,
+        status: m.status,
+        messageCount: m._count.messages,
+        expiresAt: m.expiresAt,
+        createdAt: m.createdAt,
+      })),
+      total,
+      page: input.page,
+      pageSize: input.pageSize,
+      totalPages: Math.ceil(total / input.pageSize),
+    };
+  },
+
+  /**
+   * Get messages for a mailbox owned by subject.
+   *
+   * Local DB is the source of truth — webhook ingest persists every message
+   * with attachments mirrored to R2. We do NOT round-trip to the Go backend
+   * here, so reads stay fast and work offline of the mail server.
+   */
+  async getMessagesBySubject(mailboxPublicId: string, subject: Subject) {
+    const mailbox = await this._findOwned(mailboxPublicId, subject);
+    const messages = await prisma.mailboxMessage.findMany({
+      where: { mailboxId: mailbox.id },
+      orderBy: { receivedAt: 'desc' },
+      take: 50,
+      include: {
+        attachments: {
+          select: {
+            id: true,
+            filename: true,
+            contentType: true,
+            size: true,
+            scanStatus: true,
+          },
+        },
+      },
+    });
+    return messages.map((m) => ({
+      id: m.publicId,
+      from: m.fromAddress,
+      subject: m.subject,
+      bodyText: m.bodyText,
+      bodyHtml: m.bodyHtml,
+      isRead: m.isRead,
+      receivedAt: m.receivedAt,
+      attachments: m.attachments,
+    }));
+  },
+
+  /** Delete a mailbox owned by subject. Returns the publicId for cookie cleanup. */
+  async deleteBySubject(
+    mailboxPublicId: string,
+    subject: Subject,
+    meta?: { requestId?: string }
+  ) {
+    const mailbox = await this._findOwned(mailboxPublicId, subject);
+    const { externalId } = (mailbox.metadata as any) || {};
+    if (externalId) {
+      try {
+        await TempMailService.deleteMailbox(externalId);
+      } catch {
+        // External best-effort.
+      }
+    }
+    await prisma.mailbox.update({
+      where: { id: mailbox.id },
+      data: { status: MailboxStatus.DELETED, deletedAt: new Date() },
+    });
+    await prisma.mailboxEvent.create({ data: { mailboxId: mailbox.id, type: 'deleted' } });
+    await AuditService.log({
+      actorId: subject.kind === 'user' ? subject.userId : null,
+      actorType: subject.kind === 'user' ? 'user' : 'system',
+      action: 'mailbox.delete',
+      targetType: 'mailbox',
+      targetId: mailbox.id,
+      metadata: subject.kind === 'guest' ? { guestGid: subject.publicId } : undefined,
+      requestId: meta?.requestId,
+    });
+    return { publicId: mailbox.publicId };
+  },
+
+  /** Extend mailbox TTL — subject-aware. */
+  async extendTTLBySubject(mailboxPublicId: string, hours: number, subject: Subject) {
+    const mailbox = await this._findOwned(mailboxPublicId, subject);
+    const { externalId } = (mailbox.metadata as any) || {};
+    if (externalId) {
+      try {
+        const renewed = await TempMailService.renewMailbox(externalId, hours);
+        const newExpiry = renewed.expiresAt
+          ? new Date(renewed.expiresAt)
+          : new Date((mailbox.expiresAt ?? new Date()).getTime() + hours * 60 * 60 * 1000);
+        await prisma.mailbox.update({
+          where: { id: mailbox.id },
+          data: { expiresAt: newExpiry },
+        });
+        await prisma.mailboxEvent.create({
+          data: {
+            mailboxId: mailbox.id,
+            type: 'extended',
+            metadata: { hoursAdded: hours, newExpiry: newExpiry.toISOString() },
+          },
+        });
+        return { expiresAt: newExpiry };
+      } catch (err: any) {
+        if (err?.code === 'NOT_FOUND') {
+          await prisma.mailbox.update({
+            where: { id: mailbox.id },
+            data: { status: MailboxStatus.EXPIRED, deletedAt: new Date() },
+          });
+          throw new NotFoundError('Mailbox no longer exists on mail server');
+        }
+        throw err;
+      }
+    }
+    const newExpiry = new Date((mailbox.expiresAt ?? new Date()).getTime() + hours * 60 * 60 * 1000);
+    await prisma.mailbox.update({ where: { id: mailbox.id }, data: { expiresAt: newExpiry } });
+    return { expiresAt: newExpiry };
   },
 };

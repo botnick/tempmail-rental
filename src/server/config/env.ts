@@ -15,6 +15,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().email().optional(),
+  RESEND_API_KEY: z.string().optional(),
   PAYMENT_WEBHOOK_SECRET: z.string().optional(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   ADMIN_SESSION_TTL_SECONDS: z.coerce.number().default(28800),
@@ -25,6 +26,19 @@ const envSchema = z.object({
     .string()
     .default('true')
     .transform((v) => v === 'true'),
+
+  CRON_SECRET: z.string().optional(),
+  GUEST_TOKEN_SECRET: z.string().min(32).optional(),
+
+  TURNSTILE_SITE_KEY: z.string().optional(),
+  TURNSTILE_SECRET: z.string().optional(),
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
+
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().optional(),
+  R2_PUBLIC_BASE_URL: z.string().url().optional(),
 });
 
 function createEnv() {

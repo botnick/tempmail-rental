@@ -1,12 +1,27 @@
+/**
+ * TempMail webhook receiver.
+ *
+ * Flow on every incoming message from the Go backend:
+ *   1. Verify HMAC signature (or API key fallback)
+ *   2. Resolve local Mailbox row by external id
+ *   3. Insert MailboxMessage (deduped by externalId)
+ *   4. For each attachment: download blob → put R2 → insert MailboxAttachment
+ *   5. Publish SSE event keyed by local mailbox.publicId so guest + authed
+ *      subscribers both receive it
+ *   6. Emit MailboxEvent (type: 'message_received')
+ *
+ * Persistence is the source of truth — guests reloading the page after a
+ * webhook fired must still see the message in their inbox.
+ */
 import { NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual, createHash } from 'crypto';
 import { sseHub } from '@/server/lib/sse-hub';
 import { ConfigService } from '@/server/services/config.service';
+import { TempMailService } from '@/server/services/tempmail.service';
+import { prisma } from '@/server/db';
+import { putObject, attachmentKey, isStorageConfigured } from '@/server/lib/storage';
 import { logger } from '@/server/lib/logger';
 
-/**
- * GET /api/webhooks/tempmail — only POST is accepted
- */
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed' },
@@ -16,93 +31,220 @@ export async function GET() {
 
 /**
  * Verify HMAC-SHA256 webhook signature.
- * TempMail server sends: X-Webhook-Signature: sha256=<hmac-hex>
+ * Header format: X-Webhook-Signature: sha256=<hmac-hex>
  */
 function verifySignature(rawBody: string, signature: string, secret: string): boolean {
   try {
     const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
     const provided = signature.replace(/^sha256=/, '');
-
     if (expected.length !== provided.length) return false;
-
     return timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
   } catch {
     return false;
   }
 }
 
-/**
- * Handle incoming Webhook from TempMail Server
- * POST /api/webhooks/tempmail
- *
- * Authentication priority:
- * 1. HMAC Signature (X-Webhook-Signature) — if webhook_secret is configured
- * 2. API Key (X-API-Key / Authorization) — fallback
- */
+/** Webhook payload shape (mirrors Go backend). */
+interface WebhookPayload {
+  mailboxId: string; // Go-side external id
+  messageId: string; // Go-side external id
+  from: string;
+  to?: string;
+  subject?: string;
+  textBody?: string;
+  htmlBody?: string;
+  receivedAt?: string;
+  size?: number;
+  attachments?: Array<{
+    id: string; // Go-side external attachment id
+    filename: string;
+    contentType: string;
+    sizeBytes: number;
+  }>;
+}
+
 export async function POST(req: Request) {
   try {
-    // Read raw body once for both signature verification and parsing
     const rawBody = await req.text();
 
-    // ─── Auth: HMAC Signature ───────────────────────
+    // ── Auth ────────────────────────────────────────
     const webhookSecret = await ConfigService.get('tempmail.webhook_secret');
     const signatureHeader = req.headers.get('x-webhook-signature');
 
     if (webhookSecret) {
       if (!signatureHeader) {
-        logger.warn('TempMail Webhook missing X-Webhook-Signature header');
         return NextResponse.json({ error: 'Missing signature' }, { status: 401 });
       }
-
       if (!verifySignature(rawBody, signatureHeader, webhookSecret)) {
         logger.warn('TempMail Webhook HMAC signature mismatch');
         return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }
     } else {
-      // ─── Fallback: API Key auth ─────────────────────
       const configuredApiKey = await ConfigService.get('tempmail.api_key');
-
       if (!configuredApiKey) {
-        // Neither HMAC secret nor API key configured — refuse to process
-        logger.error('TempMail Webhook: No authentication method configured (webhook_secret or api_key required)');
+        logger.error('TempMail Webhook: no auth method configured (need webhook_secret or api_key)');
         return NextResponse.json({ error: 'Webhook auth not configured' }, { status: 500 });
       }
-
-      const apiKeyHeader = req.headers.get('x-api-key') || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-
+      const apiKeyHeader =
+        req.headers.get('x-api-key') ||
+        req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
       if (
         !apiKeyHeader ||
         apiKeyHeader.length !== configuredApiKey.length ||
         !timingSafeEqual(Buffer.from(apiKeyHeader), Buffer.from(configuredApiKey))
       ) {
-        logger.warn('TempMail Webhook failed API key authentication');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }
 
-    // ─── Parse payload ──────────────────────────────
-    let payload: Record<string, unknown>;
+    // ── Parse ───────────────────────────────────────
+    let payload: WebhookPayload;
     try {
       payload = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    if (!payload.mailboxId) {
-      return NextResponse.json({ error: 'Missing mailboxId' }, { status: 400 });
+    if (!payload.mailboxId || !payload.messageId || !payload.from) {
+      return NextResponse.json(
+        { error: 'Missing required fields (mailboxId, messageId, from)' },
+        { status: 400 }
+      );
     }
 
-    // ─── Publish to SSE Hub ─────────────────────────
-    await sseHub.publishEvent(payload.mailboxId as string, {
-      type: 'new_message',
-      data: payload,
+    // ── Resolve local mailbox ───────────────────────
+    // Mailbox.metadata.externalId stores the Go-side id when the local
+    // mailbox was created.
+    const candidates = await prisma.mailbox.findMany({
+      where: {
+        metadata: { path: ['externalId'], equals: payload.mailboxId },
+      },
+      take: 1,
+    });
+    const localMailbox = candidates[0];
+    if (!localMailbox) {
+      logger.warn('Webhook for unknown mailbox', { externalMailboxId: payload.mailboxId });
+      // 200 — Go backend should not retry forever; we ack and drop.
+      return NextResponse.json({ accepted: false, reason: 'unknown_mailbox' });
+    }
+
+    // ── Idempotent persist ──────────────────────────
+    const existing = await prisma.mailboxMessage.findUnique({
+      where: { externalId: payload.messageId },
+    });
+    if (existing) {
+      logger.debug('Webhook duplicate — already persisted', {
+        externalMessageId: payload.messageId,
+      });
+      return NextResponse.json({ accepted: true, deduped: true });
+    }
+
+    const message = await prisma.mailboxMessage.create({
+      data: {
+        externalId: payload.messageId,
+        mailboxId: localMailbox.id,
+        fromAddress: payload.from,
+        subject: payload.subject ?? null,
+        bodyText: payload.textBody ?? null,
+        bodyHtml: payload.htmlBody ?? null,
+        size: payload.size ?? 0,
+        receivedAt: payload.receivedAt ? new Date(payload.receivedAt) : new Date(),
+      },
     });
 
-    logger.info(`Webhook processed for mailbox ${payload.mailboxId}`);
+    // ── Attachment ingest into R2 ───────────────────
+    let attachmentsPersisted = 0;
+    if (payload.attachments && payload.attachments.length > 0) {
+      if (!isStorageConfigured()) {
+        logger.warn('Attachments present but R2 storage not configured — skipping ingest', {
+          messageId: message.id,
+          attachmentCount: payload.attachments.length,
+        });
+      } else {
+        for (const att of payload.attachments) {
+          try {
+            const blob = await TempMailService.fetchAttachmentBlob(att.id);
+            const filenameHash = createHash('sha256')
+              .update(blob.bytes)
+              .digest('hex')
+              .slice(0, 16);
+            const key = attachmentKey(
+              localMailbox.id,
+              payload.messageId,
+              filenameHash,
+              blob.filename
+            );
+            await putObject(key, blob.bytes, blob.contentType);
+            await prisma.mailboxAttachment.create({
+              data: {
+                messageId: message.id,
+                filename: blob.filename,
+                contentType: blob.contentType,
+                size: blob.size,
+                storageKey: key,
+                scanStatus: 'pending',
+              },
+            });
+            attachmentsPersisted++;
+          } catch (err) {
+            logger.error('Attachment ingest failed', {
+              attachmentId: att.id,
+              messageId: message.id,
+              err: err instanceof Error ? err.message : String(err),
+            });
+            // Continue with remaining attachments — don't fail whole webhook.
+          }
+        }
+      }
+    }
 
-    return NextResponse.json({ success: true });
+    // ── Mailbox event + counter ─────────────────────
+    await prisma.$transaction([
+      prisma.mailbox.update({
+        where: { id: localMailbox.id },
+        data: { messageCount: { increment: 1 } },
+      }),
+      prisma.mailboxEvent.create({
+        data: {
+          mailboxId: localMailbox.id,
+          type: 'message_received',
+          metadata: {
+            messagePublicId: message.publicId,
+            from: payload.from,
+            subject: payload.subject,
+            attachmentsPersisted,
+          },
+        },
+      }),
+    ]);
+
+    // ── SSE fan-out (keyed by LOCAL publicId) ──────
+    await sseHub.publishEvent(localMailbox.publicId, {
+      type: 'new_message',
+      data: {
+        messagePublicId: message.publicId,
+        from: payload.from,
+        subject: payload.subject,
+        receivedAt: message.receivedAt.toISOString(),
+        hasAttachments: attachmentsPersisted > 0,
+      },
+    });
+
+    logger.info('Webhook ingested', {
+      mailboxPublicId: localMailbox.publicId,
+      messagePublicId: message.publicId,
+      attachmentsPersisted,
+    });
+
+    return NextResponse.json({
+      accepted: true,
+      messageId: message.publicId,
+      attachmentsPersisted,
+    });
   } catch (error) {
-    logger.error('TempMail Webhook Error', { error: error instanceof Error ? error : new Error(String(error)) });
+    logger.error('TempMail Webhook error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    });
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

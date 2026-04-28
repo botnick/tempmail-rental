@@ -186,6 +186,12 @@ model Plan {
   isDefault   Boolean    @default(false) @map("is_default")
   sortOrder   Int        @default(0) @map("sort_order")
   trialDays   Int        @default(0) @map("trial_days")
+  // ─── Rank presentation ────────────────────────
+  // User-facing tier identity (Bronze/Silver/Gold/Platinum/Guest). Edited via
+  // admin Plans page; rendered by RankBadge component.
+  tierName    String?    @map("tier_name")
+  tierColor   String?    @map("tier_color")
+  tierIcon    String?    @map("tier_icon")
   metadata    Json?
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
@@ -457,6 +463,8 @@ model MailboxMessage {
   id          String   @id @default(cuid())
   publicId    String   @unique @default(cuid()) @map("public_id")
   mailboxId   String   @map("mailbox_id")
+  // Go backend's message id — used to dedupe webhook re-deliveries.
+  externalId  String?  @unique @map("external_id")
   fromAddress String   @map("from_address")
   subject     String?
   bodyText    String?  @map("body_text")
@@ -645,12 +653,14 @@ model AuditLog {
   reason     String? // required for destructive admin actions
   createdAt  DateTime @default(now()) @map("created_at")
 
-  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([actorId])
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt])
+  // Composite for "audit log of user X over time" — common admin view.
+  @@index([actorId, createdAt(sort: Desc)])
   @@map("audit_logs")
 }
 

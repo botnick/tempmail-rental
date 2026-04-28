@@ -31,6 +31,14 @@ export const RATE_LIMIT_POLICIES: Record<string, RateLimitConfig> = {
   'api.general': { key: 'api.general', limit: 100 * devMultiplier, windowMs: 60 * 1000 },
   'admin.action': { key: 'admin.action', limit: 50 * devMultiplier, windowMs: 60 * 1000 },
   'contact.submit': { key: 'contact.submit', limit: 3 * devMultiplier, windowMs: 15 * 60 * 1000 },
+
+  // Guest tempmail flow — keyed by gid (cookie identifier) inside rateLimitedGuestOrAuthedProcedure.
+  'guest.mailbox.create': { key: 'guest.mailbox.create', limit: 3 * devMultiplier, windowMs: 10 * 60 * 1000 },
+  'guest.mailbox.read': { key: 'guest.mailbox.read', limit: 120 * devMultiplier, windowMs: 60 * 1000 },
+  'guest.message.read': { key: 'guest.message.read', limit: 240 * devMultiplier, windowMs: 60 * 1000 },
+
+  // Belt-and-suspenders for the Go-backend webhook (already HMAC-validated).
+  'webhook.tempmail': { key: 'webhook.tempmail', limit: 1000, windowMs: 60 * 1000 },
 };
 
 /**

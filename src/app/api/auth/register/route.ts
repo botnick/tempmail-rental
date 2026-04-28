@@ -24,11 +24,19 @@ export async function POST(req: NextRequest) {
     // Register
     await AuthService.register(parsed.data, { ip, userAgent });
 
-    // Auto-login after registration
+    // Auto-login after registration. A freshly-registered account cannot have
+    // MFA enabled, so the MFA branch is impossible here — narrow the union.
     const loginResult = await AuthService.login(
       { email: parsed.data.email, password: parsed.data.password },
       { ip, userAgent }
     );
+
+    if ('mfaRequired' in loginResult) {
+      return NextResponse.json(
+        { error: 'Registration succeeded but auto-login failed unexpectedly' },
+        { status: 500 }
+      );
+    }
 
     const response = NextResponse.json({
       user: loginResult.user,

@@ -4,6 +4,10 @@ import { generateRequestId } from '../lib/id';
 import { hashToken } from '../lib/crypto';
 import { resolveUserPermissions, resolveUserRoles } from '../policy/rbac';
 import type { Actor } from '../lib/types';
+import {
+  readGuestCookieFromHeader,
+  type GuestSessionPayload,
+} from '../lib/guest-session';
 
 // Throttle lastActiveAt updates — at most once per 60s per session
 const lastActiveMap = new Map<string, number>();
@@ -34,6 +38,8 @@ export interface TRPCContext {
     isAdmin: boolean;
   } | null;
   actor: Actor | null;
+  /** Anonymous guest session — present when no logged-in user but a valid guest_token cookie exists. */
+  guest: GuestSessionPayload | null;
 }
 
 /**
@@ -114,6 +120,9 @@ export async function createContext(
     }
   }
 
+  // Populate guest payload only when there's no authenticated session.
+  const guest = actor ? null : readGuestCookieFromHeader(cookieHeader);
+
   return {
     prisma,
     requestId,
@@ -121,6 +130,7 @@ export async function createContext(
     userAgent,
     session,
     actor,
+    guest,
   };
 }
 
