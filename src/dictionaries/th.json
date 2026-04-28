@@ -21,9 +21,32 @@
     "domains": "โดเมน",
     "billing": "การเงิน",
     "settings": "ตั้งค่า",
+    "notifications": "การแจ้งเตือน",
     "admin": "แอดมิน",
     "adminPanel": "แผงควบคุม",
     "home": "หน้าหลัก"
+  },
+  "notifications": {
+    "title": "การแจ้งเตือน",
+    "subtitle": "ข้อความและประกาศจากระบบ",
+    "empty": "ยังไม่มีการแจ้งเตือน",
+    "markAllRead": "อ่านทั้งหมด",
+    "loadMore": "โหลดเพิ่ม",
+    "loading": "กำลังโหลด…",
+    "seeAll": "ดูทั้งหมด",
+    "viewAll": "ดูการแจ้งเตือนทั้งหมด",
+    "close": "ปิด",
+    "markRead": "อ่านแล้ว",
+    "delete": "ลบ"
+  },
+  "rank": {
+    "guest": "ผู้เยี่ยมชม",
+    "bronze": "Bronze",
+    "silver": "Silver",
+    "gold": "Gold",
+    "platinum": "Platinum",
+    "upgradeTo": "อัปเกรดเป็น",
+    "currentRank": "ระดับปัจจุบัน"
   },
   "footer": {
     "pricing": "แผนราคา",

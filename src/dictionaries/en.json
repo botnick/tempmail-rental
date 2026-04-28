@@ -21,9 +21,32 @@
     "domains": "Domains",
     "billing": "Billing",
     "settings": "Settings",
+    "notifications": "Notifications",
     "admin": "Admin",
     "adminPanel": "Admin Panel",
     "home": "Home"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "Messages and announcements from the system",
+    "empty": "No notifications yet",
+    "markAllRead": "Mark all read",
+    "loadMore": "Load more",
+    "loading": "Loading…",
+    "seeAll": "See all",
+    "viewAll": "View all notifications",
+    "close": "Close",
+    "markRead": "Mark read",
+    "delete": "Delete"
+  },
+  "rank": {
+    "guest": "Guest",
+    "bronze": "Bronze",
+    "silver": "Silver",
+    "gold": "Gold",
+    "platinum": "Platinum",
+    "upgradeTo": "Upgrade to",
+    "currentRank": "Current rank"
   },
   "footer": {
     "pricing": "Pricing",

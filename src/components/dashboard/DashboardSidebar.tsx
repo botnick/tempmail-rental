@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc';
 import { BRAND } from '@/config/ui';
 import {
   LayoutDashboard, Mail, Globe, CreditCard, Settings,
-  ShieldCheck, LogOut, ChevronRight, X,
+  ShieldCheck, LogOut, ChevronRight, X, Bell,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -39,6 +39,7 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
     { href: `/${locale}/dashboard/mailboxes`, icon: Mail, label: dict.nav.mailboxes },
     { href: `/${locale}/dashboard/domains`, icon: Globe, label: dict.nav.domains },
     { href: `/${locale}/dashboard/billing`, icon: CreditCard, label: dict.nav.billing },
+    { href: `/${locale}/dashboard/notifications`, icon: Bell, label: dict.nav.notifications ?? 'การแจ้งเตือน' },
     { href: `/${locale}/dashboard/settings`, icon: Settings, label: dict.nav.settings },
   ];
 
