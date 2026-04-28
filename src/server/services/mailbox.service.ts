@@ -555,14 +555,23 @@ export const MailboxService = {
       permissions: [],
       planSlug: null,
     };
+    // For guests, send a FRESH per-call tenantId to the Go backend instead
+    // of the long-lived cookie gid. Go enforces a per-tenant historical
+    // mailbox cap; if we kept reusing one gid, a guest who creates+deletes
+    // mailboxes over weeks would eventually be locked out by Go even
+    // though our own quota (cookie-scoped active count) says they're fine.
+    // Guest ownership/auth is still proven via cookie.mailboxIds — the
+    // Go-side tenantId is only for Go's internal rate limiting.
+    const tenantId =
+      subject.kind === 'guest' ? `guest-${nanoid(16)}` : subject.tenantId;
     return this.create(input, actor, {
       ip: meta?.ip,
       requestId: meta?.requestId,
-      tenantId: subject.tenantId,
+      tenantId,
       guestGid: subject.kind === 'guest' ? subject.publicId : undefined,
       // For guests, scope the quota count by the cookie's mailboxOwnerIds so
       // they don't share a global counter with every other guest. The limit
-      // value itself comes from the `guest` Plan's PlanFeature (max_mailboxes).
+      // value itself comes from PlanFeature (max_mailboxes).
       countByPublicIds: subject.kind === 'guest' ? subject.mailboxOwnerIds : undefined,
     });
   },
