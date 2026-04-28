@@ -79,6 +79,25 @@ export function SettingsContent({ dict }: SettingsContentProps) {
   const confirmMfa = trpc.auth.confirmMfa.useMutation();
   const disableMfa = trpc.auth.disableMfa.useMutation();
 
+  // Profile / account mutations
+  const utilsTrpc = trpc.useUtils();
+  const updateProfile = trpc.auth.updateProfile.useMutation({
+    onSuccess: () => {
+      utilsTrpc.auth.me.invalidate();
+      toast.success(d.saveSuccess);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const changePassword = trpc.auth.changePassword.useMutation({
+    onSuccess: () => {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNew('');
+      toast.success(d.passwordSuccess);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   // Populate display name once
   if (me.data && !nameInitialized && me.data.displayName) {
     setDisplayName(me.data.displayName);
@@ -230,10 +249,18 @@ export function SettingsContent({ dict }: SettingsContentProps) {
 
             <div className="flex justify-end pt-1">
               <button
-                onClick={() => toast.success(d.saveSuccess)}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 active:scale-[0.98] transition-all cursor-pointer"
+                type="button"
+                onClick={() => {
+                  if (!displayName.trim()) {
+                    toast.error(d.displayNameRequired ?? 'กรุณาระบุชื่อ');
+                    return;
+                  }
+                  updateProfile.mutate({ displayName: displayName.trim() });
+                }}
+                disabled={updateProfile.isPending}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                {ui.save}
+                {updateProfile.isPending ? '…' : ui.save}
               </button>
             </div>
           </div>
@@ -360,16 +387,25 @@ export function SettingsContent({ dict }: SettingsContentProps) {
 
           <div className="flex justify-end pt-1">
             <button
+              type="button"
               onClick={() => {
-                if (newPassword !== confirmNew) { toast.error(d.confirmNewPassword); return; }
-                toast.success(d.passwordSuccess);
-                setCurrentPassword(''); setNewPassword(''); setConfirmNew('');
+                if (newPassword !== confirmNew) {
+                  toast.error(d.confirmNewPassword);
+                  return;
+                }
+                changePassword.mutate({ currentPassword, newPassword });
               }}
-              disabled={!currentPassword || !newPassword || !confirmNew || passwordsMismatch}
+              disabled={
+                !currentPassword ||
+                !newPassword ||
+                !confirmNew ||
+                passwordsMismatch ||
+                changePassword.isPending
+              }
               className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-gradient-to-r from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
             >
               <Lock className="w-3.5 h-3.5" />
-              {d.changePassword}
+              {changePassword.isPending ? '…' : d.changePassword}
             </button>
           </div>
         </div>

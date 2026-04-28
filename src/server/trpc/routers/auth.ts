@@ -167,4 +167,67 @@ export const authRouter = router({
         requestId: ctx.requestId,
       });
     }),
+
+  // ─── Profile / Account Management ──────────────
+
+  updateProfile: protectedProcedure
+    .input(
+      z.object({
+        displayName: z.string().min(1).max(100).optional(),
+        avatarUrl: z.string().url().max(500).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      return AuthService.updateProfile(ctx.actor.userId, input, {
+        ip: ctx.ip ?? undefined,
+        requestId: ctx.requestId,
+      });
+    }),
+
+  changePassword: protectedProcedure
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8).max(128),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      return AuthService.changePassword(
+        ctx.actor.userId,
+        input,
+        ctx.session.sessionId,
+        { ip: ctx.ip ?? undefined, requestId: ctx.requestId }
+      );
+    }),
+
+  requestEmailChange: protectedProcedure
+    .input(z.object({ newEmail: z.string().email().max(255) }))
+    .mutation(async ({ input, ctx }) => {
+      return AuthService.requestEmailChange(ctx.actor.userId, input.newEmail, {
+        requestId: ctx.requestId,
+      });
+    }),
+
+  confirmEmailChange: rateLimitedProcedure('api.general')
+    .input(z.object({ token: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      return AuthService.confirmEmailChange(input.token, {
+        ip: ctx.ip ?? undefined,
+        requestId: ctx.requestId,
+      });
+    }),
+
+  deleteAccount: protectedProcedure
+    .input(
+      z.object({
+        password: z.string().min(1),
+        totpCode: z.string().length(6).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      return AuthService.deleteAccount(ctx.actor.userId, input, {
+        ip: ctx.ip ?? undefined,
+        requestId: ctx.requestId,
+      });
+    }),
 });

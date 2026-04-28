@@ -147,6 +147,25 @@ export const adminBillingRouter = router({
         await PlanService.activateSubscription(linkedSubId);
       }
 
+      // Send receipt email — fire-and-forget.
+      try {
+        const user = await ctx.prisma.user.findUnique({
+          where: { id: topup.userId },
+          select: { email: true },
+        });
+        if (user?.email) {
+          const { enqueueJob } = await import('../../../lib/queue');
+          await enqueueJob('email.billing_receipt', {
+            email: user.email,
+            amount: topup.amount.toString(),
+            currency: topup.currency,
+            topupId: topup.publicId,
+          });
+        }
+      } catch {
+        // best-effort
+      }
+
       await AuditService.log({
         actorId: ctx.actor!.userId,
         actorType: 'admin',

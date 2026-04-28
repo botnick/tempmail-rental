@@ -85,6 +85,8 @@ model VerificationToken {
   type      TokenType
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
+  // Auxiliary payload — e.g. for email-change tokens we store the new email here.
+  metadata  Json?
   createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -98,6 +98,17 @@ export const AuthService = {
 
     logger.info('User registered', { userId: user.id, email: user.email });
 
+    // Welcome email — fire-and-forget; failure must not break registration.
+    try {
+      const { enqueueJob } = await import('../lib/queue');
+      await enqueueJob('email.welcome', {
+        email: user.email,
+        displayName: user.displayName,
+      });
+    } catch {
+      logger.warn('Failed to enqueue welcome email');
+    }
+
     return { userId: user.id, publicId: user.publicId };
   },
 
@@ -315,6 +326,235 @@ export const AuthService = {
       targetId: userId,
       requestId: meta?.requestId,
     });
+  },
+
+  /**
+   * Update profile fields (displayName, avatarUrl).
+   * Email changes go through the verified `requestEmailChange` flow.
+   */
+  async updateProfile(
+    userId: string,
+    input: { displayName?: string; avatarUrl?: string },
+    meta?: { ip?: string; requestId?: string }
+  ) {
+    const before = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, avatarUrl: true },
+    });
+    if (!before) throw new Error('User not found');
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+        ...(input.avatarUrl !== undefined ? { avatarUrl: input.avatarUrl } : {}),
+      },
+    });
+
+    await AuditService.log({
+      actorId: userId,
+      actorType: 'user',
+      action: 'user.profile.update',
+      targetType: 'user',
+      targetId: userId,
+      before,
+      after: input,
+      ipAddress: meta?.ip,
+      requestId: meta?.requestId,
+    });
+
+    return { success: true };
+  },
+
+  /**
+   * Change password (authed user).
+   * Requires current password; revokes all OTHER sessions on success.
+   */
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+    currentSessionId: string,
+    meta?: { ip?: string; requestId?: string }
+  ) {
+    const credential = await prisma.userCredential.findUnique({ where: { userId } });
+    if (!credential) throw new CredentialError();
+
+    const ok = await verifyPassword(credential.passwordHash, input.currentPassword);
+    if (!ok) throw new CredentialError();
+
+    const newHash = await hashPassword(input.newPassword);
+    await prisma.userCredential.update({
+      where: { userId },
+      data: { passwordHash: newHash, passwordChangedAt: new Date() },
+    });
+
+    // Revoke all other sessions; keep current one alive.
+    await prisma.session.updateMany({
+      where: { userId, revokedAt: null, id: { not: currentSessionId } },
+      data: { revokedAt: new Date() },
+    });
+
+    await AuditService.log({
+      actorId: userId,
+      actorType: 'user',
+      action: 'user.password.change',
+      targetType: 'user',
+      targetId: userId,
+      ipAddress: meta?.ip,
+      requestId: meta?.requestId,
+    });
+    return { success: true };
+  },
+
+  /**
+   * Request email change. Validates target email is unused, creates a
+   * EMAIL_VERIFY token bound to the user, queues a verification email to
+   * the NEW address. The actual swap happens in `confirmEmailChange`.
+   */
+  async requestEmailChange(
+    userId: string,
+    newEmail: string,
+    meta?: { requestId?: string }
+  ) {
+    const normalized = newEmail.toLowerCase().trim();
+    const existing = await prisma.user.findUnique({ where: { email: normalized } });
+    if (existing) {
+      // Anti-enumeration: pretend success.
+      logger.info('Email change requested for already-taken email', { userId });
+      return { sent: true };
+    }
+
+    const token = generateSecureToken();
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.verificationToken.create({
+      data: {
+        userId,
+        tokenHash,
+        type: TokenType.EMAIL_VERIFY,
+        expiresAt,
+        metadata: { kind: 'email_change', newEmail: normalized } as object,
+      },
+    });
+
+    const { enqueueJob } = await import('../lib/queue');
+    try {
+      await enqueueJob('email.verification', {
+        to: normalized,
+        token,
+        kind: 'email_change',
+      });
+    } catch {
+      logger.warn('Failed to enqueue email-change verification email');
+    }
+
+    await AuditService.log({
+      actorId: userId,
+      actorType: 'user',
+      action: 'user.email.change_requested',
+      targetType: 'user',
+      targetId: userId,
+      after: { newEmail: normalized },
+      requestId: meta?.requestId,
+    });
+
+    return { sent: true };
+  },
+
+  /** Confirm email change via the token from `requestEmailChange`. */
+  async confirmEmailChange(token: string, meta?: { ip?: string; requestId?: string }) {
+    const tokenHash = hashToken(token);
+    const vt = await prisma.verificationToken.findFirst({
+      where: { tokenHash, type: TokenType.EMAIL_VERIFY, usedAt: null },
+    });
+    if (!vt || vt.expiresAt < new Date()) {
+      throw new CredentialError();
+    }
+    const md = vt.metadata as { kind?: string; newEmail?: string } | null;
+    if (md?.kind !== 'email_change' || !md.newEmail) {
+      throw new CredentialError();
+    }
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: vt.userId },
+        data: { email: md.newEmail, emailVerifiedAt: new Date() },
+      }),
+      prisma.verificationToken.update({
+        where: { id: vt.id },
+        data: { usedAt: new Date() },
+      }),
+      // Force re-login on all devices after email change.
+      prisma.session.updateMany({
+        where: { userId: vt.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    await AuditService.log({
+      actorId: vt.userId,
+      actorType: 'user',
+      action: 'user.email.changed',
+      targetType: 'user',
+      targetId: vt.userId,
+      after: { email: md.newEmail },
+      ipAddress: meta?.ip,
+      requestId: meta?.requestId,
+    });
+
+    return { ok: true };
+  },
+
+  /**
+   * Soft-delete account.
+   * - Marks user.status=DEACTIVATED + deletedAt now
+   * - Revokes all sessions
+   * - Audit-logs the deletion
+   *
+   * Hard-delete (PII purge) happens via the cron service after a 30-day
+   * grace window; until then the user can re-activate by support request.
+   * Requires current password (and TOTP if enabled) — checked at the route.
+   */
+  async deleteAccount(
+    userId: string,
+    input: { password: string; totpCode?: string },
+    meta?: { ip?: string; requestId?: string }
+  ) {
+    const credential = await prisma.userCredential.findUnique({ where: { userId } });
+    if (!credential) throw new CredentialError();
+    const ok = await verifyPassword(credential.passwordHash, input.password);
+    if (!ok) throw new CredentialError();
+
+    if (credential.totpEnabled) {
+      if (!input.totpCode) throw new CredentialError();
+      const { MfaService } = await import('./mfa.service');
+      const valid = await MfaService.verifyMfaCode(userId, input.totpCode);
+      if (!valid) throw new CredentialError();
+    }
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { status: 'DEACTIVATED', deletedAt: new Date() },
+      }),
+      prisma.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    await AuditService.log({
+      actorId: userId,
+      actorType: 'user',
+      action: 'user.account.delete',
+      targetType: 'user',
+      targetId: userId,
+      ipAddress: meta?.ip,
+      requestId: meta?.requestId,
+    });
+
+    return { ok: true };
   },
 
   /** Check if user has admin role */

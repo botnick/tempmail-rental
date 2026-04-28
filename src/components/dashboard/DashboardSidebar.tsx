@@ -11,6 +11,7 @@ import {
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { useMobileMenu } from '@/components/providers/MobileMenuProvider';
+import { RankBadge } from '@/components/RankBadge';
 
 const ADMIN_ROLES = ['SYSTEM_ADMIN', 'ADMIN'];
 
@@ -33,6 +34,11 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
   const roles: string[] = (me.data as any)?.roles ?? [];
   const hasAdminAccess = roles.some((r) => ADMIN_ROLES.includes(r));
   const planSlug: string = (me.data as any)?.planSlug ?? 'free';
+
+  // Pull tier metadata from current subscription so the rank badge always
+  // reflects DB state (admin can recolor / rename without code change).
+  const subscription = trpc.plan.mySubscription.useQuery(undefined, { retry: false });
+  const tier = subscription.data?.plan ?? null;
 
   const userNav = [
     { href: `/${locale}/dashboard`, icon: LayoutDashboard, label: dict.nav.dashboard, exact: true },
@@ -65,12 +71,15 @@ export function DashboardSidebar({ locale, dict }: DashboardSidebarProps) {
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-amber flex items-center justify-center transition-transform duration-300 group-hover:scale-110 shadow-lg shadow-brand/15">
           <Logo className="w-4 h-4 text-white" />
         </div>
-        <div>
+        <div className="flex items-center gap-1.5">
           <span className="font-bold text-gradient">{BRAND.name}</span>
-          {planSlug !== 'free' && (
-            <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider text-brand bg-brand/10 border border-brand/20 px-1.5 py-0.5 rounded-full">
-              {planSlug}
-            </span>
+          {tier && (
+            <RankBadge
+              tierName={tier.tierName}
+              tierColor={tier.tierColor}
+              tierIcon={tier.tierIcon}
+              size="sm"
+            />
           )}
         </div>
       </Link>

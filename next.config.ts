@@ -39,12 +39,15 @@ const nextConfig: NextConfig = {
           key: 'Content-Security-Policy',
           value: [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            // Cloudflare Turnstile widget needs to load https://challenges.cloudflare.com.
+            // Inline scripts retained for Next.js runtime; unsafe-eval removed.
+            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com",
+            // R2 presigned URLs use *.r2.cloudflarestorage.com hosts.
             "img-src 'self' data: blob: https: cid:",
-            "connect-src 'self' blob:",
-            "frame-src 'self' data: blob:",
+            "connect-src 'self' blob: https://challenges.cloudflare.com https://*.r2.cloudflarestorage.com",
+            "frame-src 'self' data: blob: https://challenges.cloudflare.com",
             "frame-ancestors 'none'",
             "base-uri 'self'",
             "form-action 'self'",
