@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 REM ===========================================================
-REM  TempMail — First-time setup
+REM  TempMail - First-time setup
 REM  Install dependencies, generate Prisma client, push schema,
 REM  and seed the database.
 REM
@@ -15,7 +15,7 @@ cd /d "%~dp0"
 
 echo.
 echo ============================================
-echo   TempMail — Setup
+echo   TempMail - Setup
 echo ============================================
 echo.
 
@@ -68,16 +68,16 @@ REM 5) Seed
 echo [5/5] Seeding database (roles, permissions, plans incl. guest tier, demo users)...
 call npm run db:seed
 if errorlevel 1 (
-  echo [WARN] Seed failed or partial. Re-run seed.bat to retry.
+  echo [WARN] Seed failed or partial. Re-run dev_seed.bat to retry.
 )
 
 echo.
 echo ============================================
 echo   Setup complete.
 echo   Next steps:
-echo     - start.bat       run dev server
-echo     - build.bat       production build
-echo     - seed.bat        re-run the seed
+echo     - dev_start.bat       run dev server
+echo     - dev_build.bat       production build
+echo     - dev_seed.bat        re-run the seed
 echo ============================================
 echo.
 pause

@@ -3,15 +3,15 @@ chcp 65001 >nul
 setlocal
 
 REM ===========================================================
-REM  TempMail — Manual cron trigger (for local testing)
+REM  TempMail - Manual cron trigger (for local testing)
 REM
 REM  Hits /api/cron/expire and /api/cron with the configured
-REM  CRON_SECRET. Make sure dev server is running (start.bat).
+REM  CRON_SECRET. Make sure dev server is running (dev_start.bat).
 REM
 REM  Usage:
-REM    cron.bat            run both
-REM    cron.bat expire     run expire-mailboxes only
-REM    cron.bat all        run general cleanup only
+REM    dev_cron.bat            run both
+REM    dev_cron.bat expire     run expire-mailboxes only
+REM    dev_cron.bat all        run general cleanup only
 REM ===========================================================
 
 cd /d "%~dp0"
@@ -43,7 +43,7 @@ if /i "%MODE%"=="all" goto :general
 if /i "%MODE%"=="both" goto :both
 
 echo Unknown mode: %MODE%
-echo Usage: cron.bat [expire^|all^|both]
+echo Usage: dev_cron.bat [expire^|all^|both]
 exit /b 1
 
 :expire

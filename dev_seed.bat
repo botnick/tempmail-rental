@@ -2,7 +2,7 @@
 chcp 65001 >nul
 
 REM ===========================================================
-REM  TempMail — Re-seed database
+REM  TempMail - Re-seed database
 REM
 REM  Re-runs the seed script. Idempotent (uses upsert) so safe
 REM  to run multiple times. Use after pulling new seed data

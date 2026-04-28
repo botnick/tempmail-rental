@@ -1,10 +1,11 @@
 # คู่มือเริ่มใช้งานเร็ว ๆ
 
-ไฟล์ `.bat` ทุกตัวอยู่ที่ root ของ project ดับเบิลคลิกได้เลยจาก File Explorer
+ไฟล์ `.bat` ทุกตัวอยู่ที่ root ของ project ดับเบิลคลิกได้เลยจาก File Explorer  
+ทุกไฟล์ขึ้นต้นด้วย `dev_*` เพื่อให้ group กันใน explorer
 
 ## ครั้งแรกของเครื่องนี้
 
-ดับเบิลคลิก **`setup.bat`**  
+ดับเบิลคลิก **`dev_setup.bat`**  
 จะทำให้:
 1. ตรวจ Node 20+
 2. ตรวจไฟล์ `.env` (ต้องมี `DATABASE_URL`, `REDIS_URL`, `SESSION_SECRET`, `ARGON2_SECRET`, `GUEST_TOKEN_SECRET`)
@@ -17,7 +18,7 @@
 
 ## ใช้งานทุกวัน
 
-ดับเบิลคลิก **`start.bat`**  
+ดับเบิลคลิก **`dev_start.bat`**  
 รัน dev server → เปิดเบราว์เซอร์ที่ `http://localhost:3000`  
 หน้าหลักจะสร้าง mailbox ชั่วคราวให้ทันทีโดยไม่ต้อง login
 
@@ -27,11 +28,11 @@
 
 | ไฟล์ | ใช้ตอนไหน |
 |-----|-----------|
-| `start.bat` | เปิด dev server (ใช้บ่อยสุด) |
-| `build.bat` | ทดสอบ production build + start prod server |
-| `seed.bat` | seed ใหม่หลังเพิ่ม plan/permission ใหม่ |
-| `cron.bat` | trigger cron job ด้วยมือเพื่อทดสอบ (`expire` / `all` / ทั้งคู่) |
-| `setup.bat` | ติดตั้งใหม่หลัง schema เปลี่ยน หรือ DB ว่าง |
+| `dev_start.bat` | เปิด dev server (ใช้บ่อยสุด) |
+| `dev_build.bat` | ทดสอบ production build + start prod server |
+| `dev_seed.bat`  | seed ใหม่หลังเพิ่ม plan/permission ใหม่ |
+| `dev_cron.bat`  | trigger cron job ด้วยมือเพื่อทดสอบ (`expire` / `all` / ทั้งคู่) |
+| `dev_setup.bat` | ติดตั้งใหม่หลัง schema เปลี่ยน หรือ DB ว่าง |
 
 ## บัญชีทดสอบ (จาก seed)
 
@@ -59,10 +60,10 @@ password ทุกบัญชี: `Tempmail@2026`
 ## ปัญหาที่พบบ่อย
 
 **`Plan features not configured for user X`** ตอนสร้าง mailbox  
-→ ยังไม่ได้รัน seed → กด `seed.bat`
+→ ยังไม่ได้รัน seed → กด `dev_seed.bat`
 
 **Build error เกี่ยวกับ Prisma**  
-→ schema เปลี่ยนแต่ client ยังไม่ regen → กด `setup.bat` (จะ generate ใหม่)
+→ schema เปลี่ยนแต่ client ยังไม่ regen → กด `dev_setup.bat` (จะ generate ใหม่)
 
 **`/api/cron/expire` คืน 401**  
-→ `CRON_SECRET` ใน `.env` ไม่ตรงกับที่ส่ง → ใช้ `cron.bat` ที่อ่าน secret จาก `.env` อัตโนมัติ
+→ `CRON_SECRET` ใน `.env` ไม่ตรงกับที่ส่ง → ใช้ `dev_cron.bat` ที่อ่าน secret จาก `.env` อัตโนมัติ

@@ -2,16 +2,16 @@
 chcp 65001 >nul
 
 REM ===========================================================
-REM  TempMail — Production build + start
+REM  TempMail - Production build + start
 REM
-REM  Compiles Next.js for production (Turbopack) and then starts
-REM  the production server. Use for staging or local prod test.
+REM  Compiles Next.js for production and then starts the
+REM  production server. Use for staging or local prod test.
 REM ===========================================================
 
 cd /d "%~dp0"
 
 if not exist "node_modules" (
-  echo [!] node_modules missing — run setup.bat first.
+  echo [!] node_modules missing - run dev_setup.bat first.
   pause
   exit /b 1
 )
@@ -33,7 +33,7 @@ if errorlevel 1 (
 
 echo.
 echo ============================================
-echo   Build OK — starting production server.
+echo   Build OK - starting production server.
 echo   URL: http://localhost:3000
 echo   Press Ctrl+C to stop
 echo ============================================

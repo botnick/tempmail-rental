@@ -2,20 +2,20 @@
 chcp 65001 >nul
 
 REM ===========================================================
-REM  TempMail — Start dev server
+REM  TempMail - Start dev server
 REM  Opens http://localhost:3000
 REM
 REM  If this is the first time you've run the project, run
-REM  setup.bat first (one-time install + DB schema + seed).
+REM  dev_setup.bat first (one-time install + DB schema + seed).
 REM ===========================================================
 
 cd /d "%~dp0"
 
 if not exist "node_modules" (
   echo.
-  echo [!] node_modules missing — running setup first.
+  echo [!] node_modules missing - running setup first.
   echo.
-  call setup.bat
+  call dev_setup.bat
   if errorlevel 1 exit /b 1
 )
 
