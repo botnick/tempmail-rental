@@ -353,6 +353,24 @@ export const AuthService = {
       throw new CredentialError();
     }
 
+    // Sliding idle expiry — refuse refresh if the session has been idle
+    // longer than SESSION_IDLE_MAX_DAYS, regardless of refresh-token TTL.
+    // Prevents indefinitely-rotated tokens from outliving real activity.
+    const idleMs = env.SESSION_IDLE_MAX_DAYS * 24 * 60 * 60 * 1000;
+    const idleSince = Date.now() - session.lastActiveAt.getTime();
+    if (idleSince > idleMs) {
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+      logger.info('Session refused refresh — exceeded idle window', {
+        sessionId: session.id,
+        userId: session.userId,
+        idleDays: Math.round(idleSince / (24 * 60 * 60 * 1000)),
+      });
+      throw new CredentialError();
+    }
+
     // Revoke old session
     await prisma.session.update({
       where: { id: session.id },

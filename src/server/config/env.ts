@@ -20,6 +20,9 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   ADMIN_SESSION_TTL_SECONDS: z.coerce.number().default(28800),
   USER_SESSION_TTL_SECONDS: z.coerce.number().default(604800),
+  // Sliding idle window — refresh refused if lastActiveAt older than this.
+  // Default 7 days; cron also revokes idle sessions matching this threshold.
+  SESSION_IDLE_MAX_DAYS: z.coerce.number().default(7),
   DEFAULT_CURRENCY: z.string().min(3).max(3).default('THB'),
   TZ: z.string().default('Asia/Bangkok'),
   RATE_LIMIT_ENABLED: z

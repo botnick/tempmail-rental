@@ -7,6 +7,8 @@
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc';
 import { TRPCError } from '@trpc/server';
+import { QuotaService } from '../../services/quota.service';
+import { QuotaExceededError } from '../../lib/errors';
 
 export const aliasRouter = router({
   /** List aliases for a mailbox */
@@ -51,6 +53,16 @@ export const aliasRouter = router({
 
       if (existing) {
         throw new TRPCError({ code: 'CONFLICT', message: 'Alias already in use' });
+      }
+
+      // Plan-driven alias quota.
+      try {
+        await QuotaService.enforceAliasQuota(ctx.session.userId);
+      } catch (err) {
+        if (err instanceof QuotaExceededError) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: err.message });
+        }
+        throw err;
       }
 
       return ctx.prisma.mailboxAlias.create({

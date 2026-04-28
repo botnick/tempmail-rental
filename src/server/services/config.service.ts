@@ -1,15 +1,18 @@
 import { prisma } from '../db';
 import { LRUCache } from 'lru-cache';
+import { encrypt, decrypt, isCiphertext } from '../lib/secret-vault';
 
 /**
  * Config Service — runtime configuration from the config_entries table.
- * Uses LRU cache (60s TTL, max 200 entries) to avoid DB queries on every request.
- * At 10K+ users, this prevents ~20K DB reads/min for config alone.
+ *
+ * Sensitive entries (`isSecret=true`) are encrypted at rest with AES-256-GCM
+ * via secret-vault. They are decrypted on read into the in-memory LRU cache
+ * (60s TTL) and never echoed back to clients via getByCategory().
  */
 
 const cache = new LRUCache<string, { v: string | null }>({
   max: 200,
-  ttl: 60_000, // 60 seconds
+  ttl: 60_000,
 });
 
 export const ConfigService = {
@@ -22,7 +25,11 @@ export const ConfigService = {
     const entry = await prisma.configEntry.findUnique({
       where: { key },
     });
-    const value = entry?.value ?? null;
+    let value: string | null = entry?.value ?? null;
+
+    if (entry && value !== null && entry.isSecret && isCiphertext(value)) {
+      value = decrypt(value);
+    }
 
     cache.set(key, { v: value });
     return value;
@@ -51,19 +58,38 @@ export const ConfigService = {
     }
   },
 
-  async set(key: string, value: string, meta?: { category?: string; updatedBy?: string }) {
+  /**
+   * Write a config value. If the existing row (or `meta.isSecret` override)
+   * marks the entry as sensitive, the value is encrypted before persistence.
+   */
+  async set(
+    key: string,
+    value: string,
+    meta?: { category?: string; updatedBy?: string; isSecret?: boolean; description?: string }
+  ) {
+    const existing = await prisma.configEntry.findUnique({ where: { key } });
+    const isSecret = meta?.isSecret ?? existing?.isSecret ?? false;
+    const persisted = isSecret ? encrypt(value) : value;
+
     await prisma.configEntry.upsert({
       where: { key },
-      update: { value, updatedBy: meta?.updatedBy },
+      update: {
+        value: persisted,
+        updatedBy: meta?.updatedBy,
+        ...(meta?.isSecret !== undefined ? { isSecret: meta.isSecret } : {}),
+        ...(meta?.description !== undefined ? { description: meta.description } : {}),
+      },
       create: {
         key,
-        value,
+        value: persisted,
         category: meta?.category ?? 'general',
         updatedBy: meta?.updatedBy,
+        isSecret,
+        description: meta?.description,
       },
     });
 
-    // Update cache immediately on write
+    // Cache the PLAIN value so subsequent reads don't need decrypt.
     cache.set(key, { v: value });
   },
 
@@ -75,7 +101,9 @@ export const ConfigService = {
 
     return entries.map((e) => ({
       key: e.key,
+      // Never echo secret values to API consumers — even decrypted.
       value: e.isSecret ? '[REDACTED]' : e.value,
+      isSecret: e.isSecret,
       valueType: e.valueType,
       category: e.category,
       description: e.description,

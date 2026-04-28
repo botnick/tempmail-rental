@@ -18,6 +18,8 @@ import { createHmac, timingSafeEqual, createHash } from 'crypto';
 import { sseHub } from '@/server/lib/sse-hub';
 import { ConfigService } from '@/server/services/config.service';
 import { TempMailService } from '@/server/services/tempmail.service';
+import { QuotaService } from '@/server/services/quota.service';
+import { QuotaExceededError } from '@/server/lib/errors';
 import { prisma } from '@/server/db';
 import { putObject, attachmentKey, isStorageConfigured } from '@/server/lib/storage';
 import { logger } from '@/server/lib/logger';
@@ -139,6 +141,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ accepted: true, deduped: true });
     }
 
+    // ── Per-mailbox message rate quota ──────────────
+    // Enforced before persist. If the mailbox owner is over their plan's
+    // message_rate_per_min, the message is dropped (400) and Go side will
+    // see a non-2xx and stop retrying.
+    try {
+      await QuotaService.enforceMessageRateQuota(localMailbox.id);
+    } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        logger.warn('Webhook dropped — message rate quota exceeded', {
+          mailboxId: localMailbox.id,
+          externalMessageId: payload.messageId,
+        });
+        return NextResponse.json(
+          { accepted: false, reason: 'quota_exceeded', detail: err.message },
+          { status: 429 }
+        );
+      }
+      throw err;
+    }
+
     const message = await prisma.mailboxMessage.create({
       data: {
         externalId: payload.messageId,
@@ -163,6 +185,9 @@ export async function POST(req: Request) {
       } else {
         for (const att of payload.attachments) {
           try {
+            // Plan-driven attachment size limit (max_message_size_mb).
+            await QuotaService.enforceAttachmentSize(localMailbox.id, att.sizeBytes);
+
             const blob = await TempMailService.fetchAttachmentBlob(att.id);
             const filenameHash = createHash('sha256')
               .update(blob.bytes)
@@ -187,12 +212,19 @@ export async function POST(req: Request) {
             });
             attachmentsPersisted++;
           } catch (err) {
+            if (err instanceof QuotaExceededError) {
+              logger.warn('Attachment skipped — exceeds plan size limit', {
+                attachmentId: att.id,
+                size: att.sizeBytes,
+                detail: err.message,
+              });
+              continue;
+            }
             logger.error('Attachment ingest failed', {
               attachmentId: att.id,
               messageId: message.id,
               err: err instanceof Error ? err.message : String(err),
             });
-            // Continue with remaining attachments — don't fail whole webhook.
           }
         }
       }

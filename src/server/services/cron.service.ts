@@ -11,6 +11,7 @@ import { prisma } from '../db';
 import { logger } from '../lib/logger';
 import { TempMailService } from './tempmail.service';
 import { MailboxStatus } from '@prisma/client';
+import { env } from '../config/env';
 
 export const CronService = {
   /**
@@ -51,21 +52,33 @@ export const CronService = {
   },
 
   /**
-   * Revoke sessions that have expired (past expiresAt).
+   * Revoke sessions that have either expired (past expiresAt) or been idle
+   * longer than SESSION_IDLE_MAX_DAYS. The idle component is the second half
+   * of the sliding-expiry contract — refresh path enforces it on each refresh,
+   * cron sweeps stragglers (e.g. sessions never refreshed but kept open).
    */
   async cleanupExpiredSessions(): Promise<{ revoked: number }> {
     const now = new Date();
+    const idleCutoff = new Date(
+      now.getTime() - env.SESSION_IDLE_MAX_DAYS * 24 * 60 * 60 * 1000
+    );
 
     const result = await prisma.session.updateMany({
       where: {
-        expiresAt: { lt: now },
         revokedAt: null,
+        OR: [
+          { expiresAt: { lt: now } },
+          { lastActiveAt: { lt: idleCutoff } },
+        ],
       },
       data: { revokedAt: now },
     });
 
     if (result.count > 0) {
-      logger.info('[cron] Revoked expired sessions', { count: result.count });
+      logger.info('[cron] Revoked expired/idle sessions', {
+        count: result.count,
+        idleMaxDays: env.SESSION_IDLE_MAX_DAYS,
+      });
     }
 
     return { revoked: result.count };
