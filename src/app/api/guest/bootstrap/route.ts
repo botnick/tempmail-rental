@@ -97,13 +97,25 @@ async function handle(req: NextRequest) {
 
     return res;
   } catch (err) {
+    // Log the full error chain — message + stack + cause — so the dev
+    // console shows where the failure originated (typically the Go backend).
+    const e = err as { message?: string; cause?: unknown; code?: string; stack?: string };
     logger.error('Guest bootstrap failed', {
-      err: err instanceof Error ? err.message : String(err),
+      message: e?.message,
+      code: e?.code,
+      cause: e?.cause,
+      stack: e?.stack,
     });
     return NextResponse.json(
       {
         error: 'Bootstrap failed',
-        detail: err instanceof Error ? err.message : String(err),
+        detail: e?.message ?? String(err),
+        code: e?.code,
+        // In dev, surface the cause too so the user sees the Go-API
+        // response that was wrapped.
+        ...(env.NODE_ENV === 'development'
+          ? { cause: typeof e?.cause === 'object' ? JSON.stringify(e.cause) : e?.cause }
+          : {}),
       },
       { status: 500 }
     );

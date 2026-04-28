@@ -93,26 +93,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
 // Tier metadata (tierName/tierColor/tierIcon) is the user-facing "Rank" badge
 // rebrand of the underlying Plan. Stored on Plan rows so admin can edit
 // without code changes; consumed by RankBadge component.
+//
+// No separate "guest" plan — anonymous visitors are subscribed to `free`
+// (Bronze) just like registered users. Registering doesn't gate the tier;
+// it adds device-portability, notifications, and the ability to upgrade
+// to Silver/Gold.
 export const PLANS = [
-  {
-    // System plan — assigned to the singleton anonymous user that owns guest mailboxes.
-    // No pricing, not user-selectable. Tunable in DB by admin.
-    slug: 'guest', name: 'Guest', description: 'Anonymous browsing — no signup',
-    isDefault: false, sortOrder: -1, trialDays: 0,
-    tierName: 'Guest', tierColor: '#64748b', tierIcon: 'eye',
-    features: [
-      { key: 'max_mailboxes', value: '1', valueType: 'number' },
-      { key: 'retention_hours', value: '1', valueType: 'number' },
-      { key: 'custom_domain_access', value: 'false', valueType: 'boolean' },
-      { key: 'alias_count', value: '0', valueType: 'number' },
-      { key: 'custom_username_access', value: 'false', valueType: 'boolean' },
-      { key: 'max_message_size_mb', value: '2', valueType: 'number' },
-      { key: 'message_rate_per_min', value: '10', valueType: 'number' },
-      { key: 'api_access', value: 'false', valueType: 'boolean' },
-      { key: 'mfa_access', value: 'false', valueType: 'boolean' },
-    ],
-    pricing: [],
-  },
   {
     slug: 'free', name: 'Free', description: 'เริ่มต้นใช้งานอีเมลชั่วคราวฟรี', isDefault: true, sortOrder: 0, trialDays: 0,
     tierName: 'Bronze', tierColor: '#CD7F32', tierIcon: 'shield',

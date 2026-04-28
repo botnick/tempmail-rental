@@ -31,7 +31,10 @@ const ANON_EMAIL = 'anonymous@system.local';
 /** Cached anon user id — resolved once per process. */
 let _anonUserIdCache: string | null = null;
 
-const GUEST_PLAN_SLUG = 'guest';
+// Anonymous visitors share the `free` (Bronze) plan with registered users.
+// No separate "guest" plan — registering doesn't gate the tier, only adds
+// device-portability, notifications, and upgrade paths.
+const ANON_PLAN_SLUG = 'free';
 
 /**
  * Resolve the singleton anonymous user id, ensuring it exists and is
@@ -71,12 +74,13 @@ export async function getAnonUserId(): Promise<string> {
     }
   }
 
-  // Ensure the anon user has an ACTIVE subscription to the `guest` Plan
-  // so plan-feature lookups resolve via the standard pathway.
-  const guestPlan = await prisma.plan.findUnique({ where: { slug: GUEST_PLAN_SLUG } });
-  if (!guestPlan) {
+  // Ensure the anon user has an ACTIVE subscription to the `free` Plan
+  // (anonymous visitors share the same tier as registered users) so
+  // plan-feature lookups resolve via the standard pathway.
+  const anonPlan = await prisma.plan.findUnique({ where: { slug: ANON_PLAN_SLUG } });
+  if (!anonPlan) {
     throw new Error(
-      `Guest Plan (slug='${GUEST_PLAN_SLUG}') is not seeded. Run npm run db:seed.`
+      `Plan (slug='${ANON_PLAN_SLUG}') is not seeded. Run dev_seed.bat or npm run db:seed.`
     );
   }
   const existingSub = await prisma.subscription.findFirst({
@@ -87,7 +91,7 @@ export async function getAnonUserId(): Promise<string> {
       await prisma.subscription.create({
         data: {
           userId: user.id,
-          planId: guestPlan.id,
+          planId: anonPlan.id,
           status: 'ACTIVE',
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),

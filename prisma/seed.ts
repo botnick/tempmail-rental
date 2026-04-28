@@ -73,6 +73,25 @@ async function seedRoles() {
 // ── 2. PLANS & PRICING ──
 async function seedPlans() {
   console.log('  → Plans & Pricing...');
+
+  // Clean up the obsolete `guest` plan from earlier dev iterations.
+  // Anonymous users now share the `free` plan with registered users.
+  // First migrate any subscriptions still pointing at it, then delete.
+  const obsoleteGuest = await prisma.plan.findUnique({ where: { slug: 'guest' } });
+  if (obsoleteGuest) {
+    const free = await prisma.plan.findUnique({ where: { slug: 'free' } });
+    if (free) {
+      await prisma.subscription.updateMany({
+        where: { planId: obsoleteGuest.id },
+        data: { planId: free.id },
+      });
+    }
+    await prisma.planFeature.deleteMany({ where: { planId: obsoleteGuest.id } });
+    await prisma.planPricing.deleteMany({ where: { planId: obsoleteGuest.id } });
+    await prisma.plan.delete({ where: { id: obsoleteGuest.id } });
+    console.log('    Removed obsolete `guest` plan; migrated subs to `free`');
+  }
+
   const planMap = new Map<string, string>();
   for (const p of PLANS) {
     const plan = await prisma.plan.upsert({
