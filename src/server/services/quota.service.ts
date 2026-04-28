@@ -12,7 +12,6 @@
 import { prisma } from '../db';
 import { QuotaExceededError, NotFoundError } from '../lib/errors';
 import { cacheGetOrSet } from '../lib/cache';
-import { logger } from '../lib/logger';
 
 export interface QuotaCheckResult {
   allowed: boolean;

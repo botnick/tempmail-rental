@@ -22,12 +22,42 @@
 git clone https://github.com/botnick/tempmail-rental.git
 cd tempmail-rental
 npm install
-cp .env.example .env          # Edit with your DB credentials
+cp .env.example .env          # Edit DB / Redis / GUEST_TOKEN_SECRET
 npx prisma db push
 npx prisma generate
-npm run db:seed                # Optional: seed test data
+npm run db:seed                # Seeds Plans (incl. Guest tier) + roles + admin users
 npm run dev                    # Open http://localhost:3000
 ```
+
+### Required env (production)
+
+| Var | What it does |
+|-----|--------------|
+| `DATABASE_URL` | Postgres connection |
+| `REDIS_URL` | Redis (sessions, rate limit, queue, SSE pub/sub) |
+| `SESSION_SECRET` (32+ chars) | HMAC for session token hashing **and** secret-vault encryption key |
+| `ARGON2_SECRET` | Password hashing pepper |
+| `GUEST_TOKEN_SECRET` (32+ chars) | HMAC for the anonymous `guest_token` cookie |
+| `CRON_SECRET` | Bearer auth for `/api/cron/*` endpoints |
+
+### Optional but recommended
+
+| Var | What it enables |
+|-----|-----------------|
+| `RESEND_API_KEY` | Transactional emails (verify, reset, welcome, billing receipt). Falls back to SMTP if both set; falls back to console-log if neither. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | Cloudflare R2 for attachment storage. Without these, `/api/attachments/[id]` returns 503. |
+| `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET` | Cloudflare Turnstile CAPTCHA on guest mailbox creation |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Nodemailer fallback when no `RESEND_API_KEY` |
+| `SESSION_IDLE_MAX_DAYS` (default 7) | Sliding idle expiry — refresh refused after this |
+
+### Cron endpoints
+
+External scheduler (Vercel Cron / GitHub Actions / Railway) should hit:
+- `POST /api/cron/expire` — mailbox TTL expiry sweep (every 1-5 min)
+- `GET /api/cron` — generic cleanup (sessions, tokens) (every 5 min)
+- `GET /api/cron/domain-recheck` — DNS reverification (hourly)
+
+All require `Authorization: Bearer <CRON_SECRET>`.
 
 > 📖 Full setup instructions → [**docs/DEPLOYMENT.md**](docs/DEPLOYMENT.md)
 

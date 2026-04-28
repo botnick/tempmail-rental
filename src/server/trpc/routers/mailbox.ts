@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   router,
-  protectedProcedure,
   guestOrAuthedProcedure,
   rateLimitedGuestOrAuthedProcedure,
 } from '../trpc';

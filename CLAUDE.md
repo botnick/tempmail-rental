@@ -53,6 +53,8 @@ All procedures share `loggerMiddleware`. On top:
 - `adminProcedure` — requires admin role (via `isAdmin(ctx.actor.roles)`).
 - `permissionProcedure(PERMISSIONS.X)` — fine-grained RBAC. Use this, **not** `adminProcedure`, for admin endpoints; permission keys are defined in `src/server/policy/permissions.ts` and seeded into the DB `Permission` table.
 - `rateLimitedProcedure(policyKey)` / `rateLimitedProtectedProcedure(...)` — Redis sliding-window via `RATE_LIMIT_POLICIES` in `middleware/rate-limit.ts`. Gracefully degrades if Redis is down (logs and allows).
+- `guestOrAuthedProcedure` — accepts authed session OR signed `guest_token` cookie. Adds `ctx.subject: Subject` (`'user' | 'guest'`). Use `assertMailboxOwnership(subject, mailbox)` to authorize per-mailbox actions (cookie-list for guests, userId for users).
+- `rateLimitedGuestOrAuthedProcedure(policyKey)` — keyed on `gid` for guests / `userId` for users.
 
 `ctx.actor` is the canonical authorization object: `{ userId, publicId, email, roles, permissions, planSlug }`. Built in `context.ts` from the session cookie/`Authorization: Bearer` header — token is HMAC-hashed (`hashToken`) before DB lookup, never compared in plaintext. `lastActiveAt` updates are throttled per session (60s) to avoid write amplification.
 

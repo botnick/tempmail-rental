@@ -10,9 +10,14 @@ import { CmsService } from '@/server/services/cms.service';
 import { FaqBlock } from '@/components/blocks/FaqBlock';
 import { AnswerBlock } from '@/components/blocks/AnswerBlock';
 import { unstable_cache } from 'next/cache';
+import { ensureGuestMailbox } from '@/server/lib/guest-bootstrap';
+import { GuestInbox } from './_components/GuestInbox';
 
-/** Revalidate every 1 hour as fallback; primary invalidation is via revalidateTag('cms-content') */
-export const revalidate = 3600;
+// The landing page bootstraps a per-visitor guest mailbox via cookies,
+// so it must be SSR — cannot be statically prerendered. CMS content is
+// still cached via unstable_cache below; only the per-request guest cookie
+// section is dynamic.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -55,9 +60,15 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
     ['landing-answers', locale],
     { tags: ['cms-content'], revalidate: 3600 }
   );
-  const [faqItems, answerBlocks] = await Promise.all([
+  const [faqItems, answerBlocks, guest] = await Promise.all([
     getCachedFaq(),
     getCachedAnswers(),
+    ensureGuestMailbox().catch((err) => {
+      // If the guest mailbox creation fails (e.g. Go backend down), still
+      // render the marketing page; we just won't have an inbox to show.
+      console.error('[home] ensureGuestMailbox failed:', err);
+      return null;
+    }),
   ]);
 
   return (
@@ -145,33 +156,31 @@ export default async function LandingPage({ params }: { params: Promise<{ locale
           })}
         </div>
 
-        {/* Demo Card */}
-        <div className="animate-fade-in-up delay-5 w-full max-w-xl">
-          <div className="relative p-[1px] rounded-2xl bg-gradient-to-br from-brand/50 via-amber/30 to-brand-glow/15">
-            <div className="bg-surface rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="flex-1 relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand/40" />
-                  <input type="text" className="w-full bg-white/[0.03] border border-brand/10 rounded-xl text-text-primary text-sm py-3 pl-11 pr-4 outline-none transition-all focus:border-brand/40 focus:ring-2 focus:ring-brand/10" readOnly value={dict.home.demoEmail} />
-                </div>
-                <button className="px-5 py-3 text-sm font-bold text-white bg-gradient-to-br from-brand to-amber rounded-xl hover:shadow-lg hover:shadow-brand/25 transition-all duration-300 whitespace-nowrap">
-                  {dict.home.copy}
-                </button>
-              </div>
-              <div className="flex items-center justify-between text-xs text-text-muted px-1">
-                <span className="flex items-center gap-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
-                  </span>
-                  {dict.home.waitingEmail}
-                </span>
-                <span className="flex items-center gap-1.5"><Clock className="w-3 h-3" />{dict.home.expiresIn}</span>
-                <span>0 {dict.home.messages}</span>
-              </div>
+        {/* Live anonymous inbox — anyone landing here gets a real working
+            mailbox without signing up. Falls back to the static marketing
+            card only when the Go backend is unavailable. */}
+        {guest ? (
+          <div className="animate-fade-in-up delay-5 w-full">
+            <GuestInbox
+              locale={locale}
+              dict={dict}
+              initialMailbox={{
+                publicId: guest.mailbox.publicId,
+                address: guest.mailbox.address,
+                expiresAt: guest.mailbox.expiresAt
+                  ? guest.mailbox.expiresAt.toISOString()
+                  : null,
+                status: guest.mailbox.status,
+              }}
+            />
+          </div>
+        ) : (
+          <div className="animate-fade-in-up delay-5 w-full max-w-xl">
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 text-sm text-amber-300">
+              ระบบเมลกำลังปรับปรุงชั่วคราว ลองรีเฟรชอีกครั้ง หรือใช้งานผ่านแดชบอร์ดสำหรับสมาชิก
             </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* Features */}
