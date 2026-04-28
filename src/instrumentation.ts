@@ -2,15 +2,23 @@
  * Next.js Instrumentation Hook
  *
  * Runs once when the Next.js server starts.
- * Used to bootstrap background services:
- * - Register email job handlers
+ *
+ * IMPORTANT: this hook is invoked under BOTH the Node and Edge runtimes by
+ * default. Our background services (Redis, Prisma, queue worker, cron,
+ * crypto-based vault) only work under Node, and importing them under Edge
+ * spams the dev console with "Node.js API not supported in Edge Runtime"
+ * warnings. We gate the entire dynamic-import block behind
+ * `process.env.NEXT_RUNTIME === 'nodejs'` so the Edge bundler never walks
+ * the import tree.
+ *
+ * Bootstraps:
+ * - Register email job handlers (verify, reset, welcome, billing receipt, expiry warning)
  * - Start queue worker loop
  * - Start cron maintenance loop
  */
 
 export async function register() {
-  // Only run on the server (not edge runtime)
-  if (typeof window !== 'undefined') return;
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   try {
     const { registerEmailHandlers } = await import('./server/lib/email.handler');
